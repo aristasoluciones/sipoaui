@@ -46,3 +46,5 @@ setup-vscode.sh
 # Local workspace file
 sipoa.code-workspace
 docs_copilot
+.github/prompts
+

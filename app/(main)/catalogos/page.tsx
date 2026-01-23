@@ -305,28 +305,6 @@ const CatalogosDashboard = () => {
           </div>
         ))}
 
-        <div className="col-12">
-          <div className="card bg-blue-50">
-            <div className="text-center">
-              <div className="flex align-items-center justify-content-center bg-blue-100 border-round mb-3 mx-auto"
-                   style={{ width: '3rem', height: '3rem' }}>
-                <i className="pi pi-info-circle text-blue-600 text-2xl"></i>
-              </div>
-              <h6 className="font-semibold text-900 mb-2">Información Adicional</h6>
-              <p className="text-600 mb-3">
-                Los catálogos son fundamentales para el funcionamiento del sistema. 
-                Asegúrese de mantenerlos actualizados y completos.
-              </p>
-              <Button 
-                label="Ver Documentación" 
-                icon="pi pi-book" 
-                outlined
-                onClick={() => router.push('/documentation')}
-              />
-            </div>
-          </div>
-        </div>
-
       {/* Estilos para las etiquetas flotantes */}
       <style jsx global>{`
         .catalogo-card {

@@ -58,46 +58,6 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({
   const canUpdate = canAccess(config.permissions[0], ['update']);
   const canDelete = canAccess(config.permissions[0], ['delete']);
 
-  // Redirigir a página personalizada para catálogos específicos
-  useEffect(() => {
-    if (config.key === 'partidas') {
-      router.push('/catalogos/partidas');
-    }
-  }, [config.key, router]);
-
-  // Validar si el catálogo tiene componente personalizado
-  if (config.customComponent) {
-    return (
-      <div className="card">
-        <div className="flex flex-column align-items-center justify-content-center py-8">
-          <i className="pi pi-cog text-6xl text-500 mb-4"></i>
-          <h3 className="text-900 font-semibold mb-3">{config.title}</h3>
-          <p className="text-600 text-center max-w-30rem mb-4">
-            Este catálogo requiere una interfaz especializada y no puede ser gestionado desde esta vista.
-          </p>
-          <p className="text-500 text-sm">
-            Por favor, contacte al administrador del sistema para gestionar este catálogo.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Validar que tenga columnas definidas
-  if (!config.columns || config.columns.length === 0) {
-    return (
-      <div className="card">
-        <div className="flex flex-column align-items-center justify-content-center py-8">
-          <i className="pi pi-exclamation-triangle text-6xl text-orange-500 mb-4"></i>
-          <h3 className="text-900 font-semibold mb-3">Configuración Incompleta</h3>
-          <p className="text-600 text-center max-w-30rem">
-            Este catálogo no tiene columnas configuradas. Verifique la configuración en <code>catalogos.ts</code>.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // Crear esquema de validación dinámico
   const createValidationSchema = useCallback(() => {
     const schema: any = {};
@@ -165,6 +125,46 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({
     });
     setFilters(initialFilters);
   }, [config.columns]);
+
+  // Redirigir a página personalizada para catálogos específicos
+  useEffect(() => {
+    if (config.key === 'partidas') {
+      router.push('/catalogos/partidas');
+    }
+  }, [config.key, router]);
+
+  // Validar si el catálogo tiene componente personalizado
+  if (config.customComponent) {
+    return (
+      <div className="card">
+        <div className="flex flex-column align-items-center justify-content-center py-8">
+          <i className="pi pi-cog text-6xl text-500 mb-4"></i>
+          <h3 className="text-900 font-semibold mb-3">{config.title}</h3>
+          <p className="text-600 text-center max-w-30rem mb-4">
+            Este catálogo requiere una interfaz especializada y no puede ser gestionado desde esta vista.
+          </p>
+          <p className="text-500 text-sm">
+            Por favor, contacte al administrador del sistema para gestionar este catálogo.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Validar que tenga columnas definidas
+  if (!config.columns || config.columns.length === 0) {
+    return (
+      <div className="card">
+        <div className="flex flex-column align-items-center justify-content-center py-8">
+          <i className="pi pi-exclamation-triangle text-6xl text-orange-500 mb-4"></i>
+          <h3 className="text-900 font-semibold mb-3">Configuración Incompleta</h3>
+          <p className="text-600 text-center max-w-30rem">
+            Este catálogo no tiene columnas configuradas. Verifique la configuración en <code>catalogos.ts</code>.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const openNew = () => {
     setEditingItem({

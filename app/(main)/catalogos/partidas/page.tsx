@@ -10,6 +10,7 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { Dialog } from 'primereact/dialog';
 import { Badge } from 'primereact/badge';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
+import { BreadCrumb } from 'primereact/breadcrumb';
 import { useNotification } from '@/layout/context/notificationContext';
 import { usePermissions } from '@/src/hooks/usePermissions';
 import { CapitulosService } from '@/src/services/capitulos.service';
@@ -266,6 +267,16 @@ const PartidasPresupuestariasPage = () => {
     );
   });
 
+  // Breadcrumb
+  const breadcrumbItems = [
+    { label: 'Inicio', command: () => router.push('/') },
+    { label: 'Catálogos', command: () => router.push('/catalogos') },
+    { label: 'Recursos Humanos, Presupuestarios y Financieros', command: () => router.push('/catalogos') },
+    { label: 'Partidas Presupuestarias', className: 'font-bold text-900' }
+  ];
+
+  const home = { icon: 'pi pi-home', command: () => router.push('/') };
+
   // ========== TEMPLATES ==========
   const statusBodyTemplate = (rowData: any) => {
     if (!rowData) return null;
@@ -353,6 +364,10 @@ const PartidasPresupuestariasPage = () => {
     <>
       <ConfirmDialog />
       <div className="grid">
+      <div className="col-12">
+        <BreadCrumb model={breadcrumbItems} home={home} className="mb-4" />
+      </div>
+      
       <div className="col-12">
         <div className="card mb-3">
           <div className="flex justify-content-between align-items-start">

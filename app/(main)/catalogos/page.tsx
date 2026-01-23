@@ -9,14 +9,9 @@ import { Divider } from 'primereact/divider';
 import { Skeleton } from 'primereact/skeleton';
 import { BreadCrumb } from 'primereact/breadcrumb';
 import { CATALOGOS_CONFIG } from '@/src/config/catalogos';
-import { MOCK_CONFIG, MOCK_CATALOGOS } from '@/src/mocks';
 import { useAuth } from '@/layout/context/authContext';
 import  { useAllPermissions } from '@/src/hooks/useAllPermissions';
 import  { usePermissions } from '@/src/hooks/usePermissions';
-import CatalogoNavigation from '@/src/components/CatalogoNavigation';
-
-//  Components 
-import { AccessDenied } from '@/src/components/AccessDeneid';
 
 interface CatalogoStats {
   key: string;

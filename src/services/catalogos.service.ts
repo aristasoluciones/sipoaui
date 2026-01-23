@@ -5,13 +5,15 @@ import { CATALOGOS_CONFIG } from '@/src/config/catalogos';
 export class CatalogoService {
   private catalogoKey: string;
   private hasApiAccess: boolean;
+  private apiEndpoint: string;
 
   constructor(catalogoKey: string) {
     this.catalogoKey = catalogoKey;
     
-    // Obtener la configuración del catálogo para verificar acceso a API
+    // Obtener la configuración del catálogo
     const config = CATALOGOS_CONFIG.find(c => c.key === catalogoKey);
     this.hasApiAccess = config?.hasApiAccess !== false; // Por defecto true si no está definido
+    this.apiEndpoint = config?.apiEndpoint || `/api/catalogos/${this.catalogoKey}`;
   }
 
   private shouldUseMocks(): boolean {
@@ -20,7 +22,7 @@ export class CatalogoService {
   }
 
   private getApiEndpoint() {
-    return `/api/catalogos/${this.catalogoKey}`;
+    return this.apiEndpoint;
   }
 
   private getMockData() {
@@ -66,7 +68,10 @@ export class CatalogoService {
     }
     
     return await http.post(this.getApiEndpoint(), data);
-  }  async update(id: number, data: any) {
+  } 
+  
+  async update(id: number, data: any) {
+
     if (this.shouldUseMocks()) {
       await mockUtils.delay();
       const mockData = this.getMockData();
@@ -136,7 +141,7 @@ export const createCatalogoService = (catalogoKey: string) => {
 
 // Servicios predefinidos para cada catálogo
 export const unidadesService = new CatalogoService('unidades');
-export const objetivosService = new CatalogoService('objetivos');
+export const objetivosService = new CatalogoService('objetivos-estrategicos');
 export const politicasService = new CatalogoService('politicas');
 export const programasService = new CatalogoService('programas');
 export const marcoNormativoService = new CatalogoService('marcoNormativo');

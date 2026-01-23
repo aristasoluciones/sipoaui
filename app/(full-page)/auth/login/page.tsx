@@ -112,6 +112,11 @@ const LoginPage = () => {
                                     feedback={false}
                                     value={password} 
                                     onChange={(e) => setPassword(e.target.value)} 
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleLogin();
+                                        }
+                                    }}
                                     placeholder="Contraseña" 
                                     className="w-full mb-2" 
                                     inputClassName="w-full p-3">

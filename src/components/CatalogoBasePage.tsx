@@ -195,7 +195,7 @@ const CatalogoBasePage: React.FC<CatalogoPageProps> = ({ catalogoKey, title, des
               </div>
           </div>
             <Button
-              label="Dashboard Catálogos"
+              label="Regresar a catálogos"
               icon="pi pi-arrow-left"
               className="p-button-outlined"
               onClick={() => router.push('/catalogos')}

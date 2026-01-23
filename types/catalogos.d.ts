@@ -1,8 +1,9 @@
 // Estatus para los catálogos
-enum Estatus {
+export enum Estatus {
   Activo = 'Activo',
   Inactivo = 'Inactivo'
 }
+
 
 // 📥 API Response Types (snake_case)
 export interface CatalogoItemApi {
@@ -83,6 +84,31 @@ export interface Beneficiario extends CatalogoItem {}
 
 export interface BeneficiarioApi extends CatalogoItemApi {}
 
+// Capítulo de Partidas Presupuestarias
+export interface Capitulo extends CatalogoItem {
+  codigo: string;
+  descripcion?: string;
+}
+
+export interface CapituloApi extends CatalogoItemApi {
+  codigo: string;
+  descripcion?: string;
+}
+
+// Partida Presupuestaria (asociada a un capítulo)
+export interface Partida extends CatalogoItem {
+  capituloId: number;
+  codigo: string;
+  descripcion?: string;
+}
+
+export interface PartidaApi extends CatalogoItemApi {
+  capitulo_id: number;
+  codigo: string;
+  descripcion?: string;
+}
+
+// Antigua definición de PartidaPresupuestaria (deprecada - usar Capitulo y Partida)
 export interface PartidaPresupuestaria extends CatalogoItem {
   numero: string;
   capitulo: string;
@@ -171,9 +197,11 @@ export interface CatalogoConfig {
   category: 'organizacional' | 'planeacion' | 'recursos' | 'tabuladores';
   icon: string;
   route: string;
-  columns: ColumnConfig[];
+  apiEndpoint: string;
+  columns?: ColumnConfig[];
   permissions: string[];
   hasApiAccess: boolean;
+  customComponent?: boolean; // true para catálogos con UI personalizada
 }
 
 export interface ColumnConfig {

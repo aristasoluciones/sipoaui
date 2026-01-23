@@ -236,7 +236,7 @@ const CedulaCargosPage = () => {
   const updateCompetencia = (index: number, field: keyof Competencia, value: any) => {
     if (editingCedula) {
       const newCompetencias = [...editingCedula.competencias];
-      newCompetencias[index][field] = value;
+      (newCompetencias[index] as any)[field] = value;
       setEditingCedula({ ...editingCedula, competencias: newCompetencias });
     }
   };
@@ -621,7 +621,7 @@ const CedulaCargosPage = () => {
                     <InputText
                       id="aniosExperiencia"
                       type="number"
-                      value={editingCedula.aniosExperiencia}
+                      value={editingCedula.aniosExperiencia.toString()}
                       onChange={(e) => setEditingCedula({ ...editingCedula, aniosExperiencia: parseInt(e.target.value) || 0 })}
                       className="w-full"
                     />
@@ -752,7 +752,7 @@ const CedulaCargosPage = () => {
                       <InputText
                         id="numeroPlazas"
                         type="number"
-                        value={editingCedula.numeroPlazas}
+                        value={editingCedula.numeroPlazas.toString()}
                         onChange={(e) => setEditingCedula({ ...editingCedula, numeroPlazas: parseInt(e.target.value) || 1 })}
                         className="w-full"
                       />

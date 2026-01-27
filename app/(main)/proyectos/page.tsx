@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { BreadCrumb } from 'primereact/breadcrumb';
 import { Button } from 'primereact/button';
@@ -12,7 +12,7 @@ import { PageAccessDenied } from '@/src/components/AccessDeneid';
 // Hooks and Components
 import {
   useProjectsManagement,
-  ProjectsPageActions,
+  ProjectFilters,
   EjercicioFiscalSelector,
   ProjectList
 } from '@/src/components/proyectos';
@@ -27,6 +27,7 @@ const ProjectsPage: React.FC = () => {
 
   // Estado local para el layout
   const [layout, setLayout] = useState<'grid' | 'list'>('list');
+  const [showFilters, setShowFilters] = useState(false);
 
   const {
     // Estado
@@ -39,6 +40,7 @@ const ProjectsPage: React.FC = () => {
     // Filtros y búsqueda
     globalFilter,
     statusFilter,
+    etapaFilter,
     selectedEjercicioFiscal,
 
     // Ejercicios fiscales
@@ -50,6 +52,7 @@ const ProjectsPage: React.FC = () => {
     loadMoreProjects,
     setGlobalFilter,
     setStatusFilter,
+    setEtapaFilter,
     changeSelectedEjercicioFiscal,
 
     // Utilities
@@ -57,6 +60,12 @@ const ProjectsPage: React.FC = () => {
     permiteCapturaProyectos,
     getSelectedEjercicioFiscal
   } = useProjectsManagement();
+
+  // Memoizar el cálculo de isEjercicioFiscalAbierto para evitar re-ejecuciones innecesarias
+  const isEjercicioFiscalAbierto = useMemo(() => {
+    const ejercicio = getSelectedEjercicioFiscal();
+    return ejercicio ? permiteCapturaProyectos(ejercicio) : false;
+  }, [selectedEjercicioFiscal, getSelectedEjercicioFiscal, permiteCapturaProyectos]);
 
   // Modificar handleProjectSelect para navegar a la ruta dinámica
   const handleProjectClick = (project: Proyecto) => {
@@ -152,21 +161,23 @@ const ProjectsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Toolbar con acciones */}
-          <div className="grid">
-            <div className="col-12">
-              <ProjectsPageActions
-                globalFilter={globalFilter}
-                statusFilter={statusFilter}
-                hasCreatePermission={hasAnyPermission(['cartera_de_proyectos.proyectos.create'])}
-                layout={layout}
-                onGlobalFilterChange={setGlobalFilter}
-                onStatusFilterChange={setStatusFilter}
-                onLayoutChange={setLayout}
-                onNewProject={handleCreateNewProject}
-              />
+          {/* Toolbar con acciones - solo si showFilters */}
+          {showFilters && (
+            <div className="grid">
+              <div className="col-12">
+                <ProjectFilters
+                  globalFilter={globalFilter}
+                  statusFilter={statusFilter}
+                  etapaFilter={etapaFilter}
+                  layout={layout}
+                  onGlobalFilterChange={setGlobalFilter}
+                  onStatusFilterChange={setStatusFilter}
+                  onEtapaFilterChange={setEtapaFilter}
+                  onLayoutChange={setLayout}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Contenido principal - Lista de proyectos */}
           <div className="grid">
@@ -181,11 +192,10 @@ const ProjectsPage: React.FC = () => {
                 onLoadMore={loadMoreProjects}
                 onLayoutChange={setLayout}
                 hasCreatePermission={hasAnyPermission(['cartera_de_proyectos.proyectos.create'])}
-                isEjercicioFiscalAbierto={(() => {
-                  const ejercicio = getSelectedEjercicioFiscal();
-                  return ejercicio ? permiteCapturaProyectos(ejercicio) : false;
-                })()}
+                isEjercicioFiscalAbierto={isEjercicioFiscalAbierto}
                 onNewProject={handleCreateNewProject}
+                showFilters={showFilters}
+                onToggleFilters={() => setShowFilters(!showFilters)}
               />
             </div>
           </div>

@@ -6,7 +6,7 @@ import { BreadCrumb } from 'primereact/breadcrumb';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Button } from 'primereact/button';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
-import PoaManager from '@/src/components/proyectos/poa/PoaManager';
+import PoaManager from '@/src/components/proyectos/PoaManager';
 import { usePermissions } from '@/src/hooks/usePermissions';
 import { PageAccessDenied } from '@/src/components/AccessDeneid';
 import { ProyectoService } from '@/src/services/proyecto';

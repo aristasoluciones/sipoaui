@@ -6,7 +6,6 @@ import { Button } from 'primereact/button';
 import { Toast } from 'primereact/toast';
 
 import { Badge } from 'primereact/badge';
-import { ProgressBar } from 'primereact/progressbar';
 
 import { Avatar } from 'primereact/avatar';
 import ProyectoStageGeneralSidebar from './ProyectoStageGeneralSidebar';
@@ -18,36 +17,10 @@ import ProyectoStageBeneficiariosSidebar from './ProyectoStageBeneficiariosSideb
 import ProyectoStageFormulacionSidebar from './ProyectoStageFormulacionSidebar';
 
 import { useProjectOperations } from '@/src/hooks/useProjectOperations';
-import { Proyecto, ProyectoFormData, ProyectoApi, EtapaProyectoEnum } from '@/types/proyectos';
-import { Prioridad, EstatusEtapa } from '@/types/proyectos.d';
+import { Prioridad, EstatusEtapa, ProyectoWizardProps,ProyectoFormData } from '@/types/proyectos.d';
 import { useNotification } from '@/layout/context/notificationContext';
 import { formatApiError } from '@/src/utils';
-
-interface ProyectoWizardProps {
-  project?: Proyecto;
-  onCancel: () => void;
-  isCreating?: boolean;
-  onSuccess?: () => void;
-  onCloseWizard?: () => void;
-  onReloadProjects?: () => void;
-  onProjectSaved?: (savedProject: ProyectoApi) => void;
-  onProjectReload?: () => void;
-  onSavingStart?: () => void;
-  onSavingEnd?: () => void;
-  selectedEjercicioFiscal: number | null;
-  unidades?: any[];
-  empleados?: any[];
-  tiposProyecto?: any[];
-}
-
-interface Stage {
-  id: number;
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  required: boolean;
-}
+import { PROYECTO_STAGES, mapEtapaActualToStageId, getStageById, getRequiredStages, isStageRequired } from '@/src/config/proyectos';
 
 const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
   project,
@@ -70,7 +43,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
   const [wizardSaving, setWizardSaving] = useState(false);
 
   // Usar hooks separados para evitar prop drilling y estado duplicado
-  const { handleSaveProject, handleSaveDiagnostico } = useProjectOperations({
+  const { handleSaveProject } = useProjectOperations({
     isCreating,
     selectedProject: project || null,
     onSuccess,
@@ -106,18 +79,6 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
   const [currentEtapaEstatus, setCurrentEtapaEstatus] = useState<string | null>(null);
   const toast = useRef<Toast>(null);
 
-  // Mapear etapa_actual a ID de stage
-  const mapEtapaActualToStageId = (etapaActual: string): number => {
-    const etapaMap: Record<string, number> = {
-      'InformacionGeneral': 1,
-      'DiagnosticoProblema': 2,
-      'ProgramaOperativoAnual': 3,
-      'EstimacionBeneficiarios': 4,
-      'FormulacionCuantitativa': 5
-    };
-    return etapaMap[etapaActual] ?? 1;
-  };
-
   // Inicializar etapas completadas cuando se carga el proyecto
   useEffect(() => {
     if (project?.etapasCompletadas) {
@@ -149,89 +110,22 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     }
   }, [selectedEjercicioFiscal, formData.ejercicio_id]);
 
-  // Definición de etapas del proyecto
-  const stages: Stage[] = [
-    {
-      id: 1,
-      title: 'Información General',
-      description: 'Datos básicos del proyecto',
-      icon: 'pi pi-info-circle',
-      color: 'blue',
-      required: true
-    },
-    {
-      id: 2,
-      title: 'Diagnóstico del Problema',
-      description: 'Identificación y análisis del problema principal',
-      icon: 'pi pi-search',
-      color: 'orange',
-      required: true
-    },
-    {
-      id: 3,
-      title: 'Programa Operativo Anual',
-      description: 'Captura de Actividades, Subactividades y periodos de ejecución',
-      icon: 'pi pi-list',
-      color: 'purple',
-      required: true
-    },
-    {
-      id: 4,
-      title: 'Estimación de Beneficiarios',
-      description: 'Análisis de población objetivo y beneficiarios',
-      icon: 'pi pi-users',
-      color: 'green',
-      required: true
-    },
-    {
-      id: 5,
-      title: 'Formulación Cuantitativa',
-      description: 'Análisis financiero y evaluación económica',
-      icon: 'pi pi-calculator',
-      color: 'teal',
-      required: false
-    }
-  ];
-
-  // Opciones para dropdowns - ya no necesarias aquí (movidas al componente sidebar)
-
-  // Obtener progreso de una etapa
+  // Obtener el progreso de una etapa, en porcentaje
   const getStageProgress = (stageId: number): number => {
-    // Verificar si está en completedStages
-    if (completedStages.has(stageId)) {
-      return 100;
-    }
-
-    // Stage 1 (Información General) está completo si:
-    // - Existe un proyecto (ya guardado en BD), o
-    // - Es un proyecto nuevo que ya se guardó (projectCreated = true)
-    if (stageId === 1) {
-      return (project || projectCreated) ? 100 : 0;
-    }
-
-    // Por ahora, otras etapas no tienen progreso
-    // calcular basado en datos guardados en sessionStorage
-    const storedData = sessionStorage.getItem(`proyecto_etapas_${formData.uuid}`);
-    if (storedData) {
-      const etapas = JSON.parse(storedData);
-      if (etapas[stageId]) {
-        return 100;
-      }
-    }
-
+    // Si la etapa está aprobada, está 100% completa
+    if (completedStages.has(stageId)) return 100;
+    
     return 0;
   };
 
-  // Verificar si una etapa está completa
+  // Verificar si una etapa está completada
   const isStageCompleted = (stageId: number): boolean => {
-    return completedStages.has(stageId) || getStageProgress(stageId) >= 100;
+    return getStageProgress(stageId) === 100;
   };
 
   // Verificar si todas las etapas requeridas están completas
   const areAllRequiredStagesCompleted = (): boolean => {
-    return stages
-      .filter(stage => stage.required)
-      .every(stage => isStageCompleted(stage.id));
+    return getRequiredStages().every(stage => isStageCompleted(stage.id));
   };
 
   // Verificar si una etapa está desbloqueada
@@ -262,8 +156,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     
     // Lógica por defecto: verificar que todas las etapas anteriores requeridas estén completas
     for (let i = 1; i <= stageId; i++) {
-      const stage = stages.find(s => s.id === i);
-      if (stage?.required && !isStageCompleted(i)) {
+      if (isStageRequired(i) && !isStageCompleted(i)) {
         return false;
       }
     }
@@ -354,7 +247,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
 
   // Guardar etapa actual
   const handleSaveStage = async () => {
-    const stage = activeStage !== null ? stages.find(s => s.id === activeStage) : null;
+    const stage = activeStage !== null ? getStageById(activeStage) : null;
     const stageName = stage?.title || '';
 
     // Si es la etapa 1 (Información General), guardar el proyecto y activar siguiente etapa
@@ -379,9 +272,6 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     }
 
     // El guardado de etapas sucede en useProjectOperations
-
-    
-
     handleCloseSidebar();
   };
 
@@ -396,8 +286,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
         {/* Contenido Principal - Resumen de Etapas */}
         <div className="">
           <div className="grid">
-            {stages.map((stage) => {
-              const progress = getStageProgress(stage.id);
+            {PROYECTO_STAGES.map((stage) => {
               const status = getStageStatus(stage.id);
               const isLocked = status === 'locked';
               
@@ -407,9 +296,11 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
                     className={`bg-white border border-round border-gray-200 h-full border-1 cursor-pointer transition-all transition-duration-200 ${
                       status === EstatusEtapa.EN_REVISION
                         ? 'border-warning-400 bg-orange-50 hover:shadow-4'
-                        : isLocked
-                          ? 'opacity-50 cursor-not-allowed'
-                          : 'hover:shadow-4'
+                        : status === EstatusEtapa.OBSERVADO
+                          ? 'border-danger-400 bg-red-50 hover:shadow-4'
+                          : isLocked
+                            ? 'opacity-50 cursor-not-allowed'
+                            : 'hover:shadow-4'
                     }`}
                     onClick={() => !isLocked && handleEditStage(stage.id)}
                   >
@@ -448,6 +339,13 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
                               className="text-xs"
                             />
                           )}
+                          {status === EstatusEtapa.OBSERVADO && (
+                            <Badge 
+                              value="Observado" 
+                              severity="danger" 
+                              className="text-xs"
+                            />
+                          )}
                           {status === 'locked' && (
                             <Badge 
                               value="Bloqueado" 
@@ -477,20 +375,24 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
                           label={
                             status === EstatusEtapa.EN_REVISION
                               ? 'Ver'
-                              : isLocked 
-                                ? 'Bloqueado' 
-                                : status === EstatusEtapa.APROBADO 
-                                  ? 'Revisar' 
-                                  : 'Editar'
+                              : status === EstatusEtapa.OBSERVADO
+                                ? 'Corregir'
+                                : isLocked 
+                                  ? 'Bloqueado' 
+                                  : status === EstatusEtapa.APROBADO 
+                                    ? 'Revisar' 
+                                    : 'Editar'
                           }
                           icon={
                             status === EstatusEtapa.EN_REVISION
                               ? 'pi pi-eye'
-                              : isLocked 
-                                ? 'pi pi-lock' 
-                                : status === EstatusEtapa.APROBADO 
-                                  ? 'pi pi-eye' 
-                                  : 'pi pi-pencil'
+                              : status === EstatusEtapa.OBSERVADO
+                                ? 'pi pi-exclamation-triangle'
+                                : isLocked 
+                                  ? 'pi pi-lock' 
+                                  : status === EstatusEtapa.APROBADO 
+                                    ? 'pi pi-eye' 
+                                    : 'pi pi-pencil'
                           }
                           size="small"
                           outlined
@@ -522,7 +424,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
               <ProyectoStageGeneralSidebar
                 visible={sidebarVisible}
                 onHide={handleCloseSidebar}
-                stage={stages.find(s => s.id === activeStage)!}
+                stage={getStageById(activeStage)!}
                 formData={formData}
                 onInputChange={handleInputChange}
                 onSave={handleSaveStage}
@@ -546,7 +448,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
               <ProyectoStageDiagnosticoSidebar
                 visible={sidebarVisible}
                 onHide={handleCloseSidebar}
-                stage={stages.find(s => s.id === activeStage)!}
+                stage={getStageById(activeStage)!}
                 project={project}
                 onCancel={handleCloseSidebar}
                 onProjectReload={onProjectReload}
@@ -558,7 +460,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
             <ProyectoStagePoaSidebar
               visible={sidebarVisible}
               onHide={handleCloseSidebar}
-              stage={stages.find(s => s.id === activeStage)!}
+              stage={getStageById(activeStage)!}
               project={project}
               onSave={handleSaveStage}
               onCancel={handleCloseSidebar}
@@ -569,7 +471,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
             <ProyectoStageBeneficiariosSidebar
               visible={sidebarVisible}
               onHide={handleCloseSidebar}
-              stage={stages.find(s => s.id === activeStage)!}
+              stage={getStageById(activeStage)!}
               project={project}
               onSave={handleSaveStage}
               onCancel={handleCloseSidebar}
@@ -580,7 +482,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
             <ProyectoStageFormulacionSidebar
               visible={sidebarVisible}
               onHide={handleCloseSidebar}
-              stage={stages.find(s => s.id === activeStage)!}
+              stage={getStageById(activeStage)!}
               project={project}
               onSave={handleSaveStage}
               onCancel={handleCloseSidebar}

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Badge } from 'primereact/badge';
 import { Dropdown } from 'primereact/dropdown';
+import { Button } from 'primereact/button';
 import { EjercicioFiscal } from '@/types/ejercicios';
 
 // Utilidades para determinar el estatus de ejercicios fiscales
@@ -94,23 +95,25 @@ const EjercicioFiscalSelector: React.FC<EjercicioFiscalSelectorProps> = ({
           </div>
         )}
 
-        {/* Dropdown selector - derecha en desktop, abajo en mobile */}
+        {/* Dropdown selector y botón de filtros - derecha en desktop, abajo en mobile */}
         <div className="flex flex-column gap-2 w-full sm:w-auto order-2 lg:order-3">
           <label htmlFor="ejercicio-fiscal-header-select" className="font-semibold text-700">
             Cambiar Ejercicio Fiscal
           </label>
-          <Dropdown
-            id="ejercicio-fiscal-header-select"
-            value={selectedEjercicioFiscal}
-            options={ejerciciosFiscales.map(e => ({
-              label: e.anio.toString(),
-              value: e.id
-            }))}
-            onChange={(e) => onEjercicioFiscalChange(e.value)}
-            placeholder="Seleccionar año"
-            className="w-full sm:w-12rem"
-            showClear={false}
-          />
+          <div className="flex gap-2 align-items-center">
+            <Dropdown
+              id="ejercicio-fiscal-header-select"
+              value={selectedEjercicioFiscal}
+              options={ejerciciosFiscales.map(e => ({
+                label: e.anio.toString(),
+                value: e.id
+              }))}
+              onChange={(e) => onEjercicioFiscalChange(e.value)}
+              placeholder="Seleccionar año"
+              className="w-full sm:w-12rem"
+              showClear={false}
+            />
+          </div>
         </div>
       </div>
     </div>

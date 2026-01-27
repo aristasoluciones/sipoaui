@@ -7,18 +7,9 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { Dropdown } from 'primereact/dropdown';
 import { Sidebar } from 'primereact/sidebar';
 import type { ProyectoFormData } from '@/types/proyectos';
-import { Prioridad } from '@/types/proyectos.d';
+import { Prioridad, Stage } from '@/types/proyectos.d';
 import { proyectoInformacionGeneralSchema } from '@/src/schemas/proyecto.schemas';
 import { useNotification } from '@/layout/context/notificationContext';
-
-interface Stage {
-  id: number;
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  required: boolean;
-}
 
 interface ProyectoStageGeneralSidebarProps {
   visible: boolean;

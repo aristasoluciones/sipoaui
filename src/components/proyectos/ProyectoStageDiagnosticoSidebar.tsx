@@ -9,16 +9,8 @@ import { Button } from 'primereact/button';
 import { Sidebar } from 'primereact/sidebar';
 import { ProyectoEtapasStorage } from '@/src/utils/sessionStorage';
 import { useProjectOperations } from '@/src/hooks/useProjectOperations';
-import { Proyecto, DiagnosticoData, EstatusEtapa } from '@/types/proyectos.d';
-
-interface Stage {
-  id: number;
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  required: boolean;
-}
+import { Proyecto, DiagnosticoData, EstatusEtapa, Observacion, Stage } from '@/types/proyectos.d';
+import ObservacionViewer from './ObservacionViewer';
 
 interface ProyectoStageDiagnosticoSidebarProps {
   visible: boolean;
@@ -60,6 +52,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
   const [isEditing, setIsEditing] = useState(false);
   const formikRef = useRef<any>(null);
   const hasLoadedData = useRef(false);
+  const [observacionViewerVisible, setObservacionViewerVisible] = useState(false);
 
   // Usar el hook centralizado de operaciones
   const { handleSaveDiagnostico, handleGetDiagnostico, handleSolicitarRevision } = useProjectOperations({
@@ -171,6 +164,41 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
 
   const handleCancelEdit = () => {
     setIsEditing(false);
+  };
+
+  // Verificar si la etapa actual está observada
+  const isStageObserved = (): boolean => {
+    const etapaCompletada = project?.etapasCompletadas?.find(e => e.id === stage.id);
+    return etapaCompletada?.estatus === EstatusEtapa.OBSERVADO;
+  };
+
+  // Obtener la observación de la etapa actual
+  const getStageObservation = (): Observacion[] => {
+    const etapaCompletada = project?.etapasCompletadas?.find(e => e.id === stage.id);
+    if (etapaCompletada?.observacion) {
+      return [{
+        id: `obs-${stage.id}-1`,
+        texto: etapaCompletada.observacion,
+        resuelta: false,
+        fechaCreacion: new Date().toISOString() // Temporal, debería venir de la API
+      }];
+    }
+    return [{
+      id: `obs-${stage.id}-1`,
+      texto: 'Se requieren correcciones en la información proporcionada. Por favor revise y actualice los datos según las observaciones indicadas.',
+      resuelta: false,
+      fechaCreacion: new Date().toISOString()
+    }];
+  };
+
+  const handleGuardarObservaciones = (observacionesActualizadas: Observacion[]) => {
+    // Aquí se implementará la lógica para guardar los cambios en el futuro
+    console.log('Observaciones actualizadas:', observacionesActualizadas);
+    // TODO: Llamar a API para actualizar el estado de las observaciones
+  };
+
+  const handleViewObservation = () => {
+    setObservacionViewerVisible(true);
   };
 
   // Encabezado del sidebar con estilos conservados
@@ -537,53 +565,76 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
           </Formik>
         </div>
         <div className="mt-auto border-top-1 surface-border p-4">
-          <div className="flex gap-2">
-            {/* Botón de cancelar - siempre presente */}
-            <Button
-              label={hasDiagnosticoSaved && isEditing ? "Cancelar Edición" : "Cerrar"}
-              icon="pi pi-times"
-              outlined
-              severity="secondary"
-              className="flex-1"
-              onClick={hasDiagnosticoSaved && isEditing ? handleCancelEdit : onCancel}
-              disabled={isSubmitting}
-            />
+          <div className="flex flex-column md:flex-row gap-2">
+            {/* Botón de ver observación - solo si la etapa está observada */}
+            {isStageObserved() && (
+              <Button
+                label="Ver Observación"
+                icon="pi pi-exclamation-triangle"
+                severity="warning"
+                outlined
+                className="w-full md:w-auto"
+                onClick={handleViewObservation}
+              />
+            )}
 
-            {hasDiagnosticoSaved && !isEditing ? (
-              // Cuando existe diagnóstico y no está en edición: mostrar Editar y Enviar a Revisión
-              <>
+            <div className="flex gap-2 flex-1 md:justify-content-end">
+              {/* Botón de cancelar - siempre presente */}
+              <Button
+                label={hasDiagnosticoSaved && isEditing ? "Cancelar Edición" : "Cerrar"}
+                icon="pi pi-times"
+                outlined
+                severity="secondary"
+                className="w-full md:w-auto"
+                onClick={hasDiagnosticoSaved && isEditing ? handleCancelEdit : onCancel}
+                disabled={isSubmitting}
+              />
+
+              {hasDiagnosticoSaved && !isEditing ? (
+                // Cuando existe diagnóstico y no está en edición: mostrar Editar y Enviar a Revisión
+                <>
+                  <Button
+                    label="Editar"
+                    icon="pi pi-pencil"
+                    severity="info"
+                    className="w-full md:w-auto"
+                    onClick={handleEdit}
+                    disabled={isSubmitting}
+                  />
+                  <Button
+                    label="Enviar a Revisión"
+                    icon="pi pi-send"
+                    severity="success"
+                    className="w-full md:w-auto"
+                    onClick={handleSendToRevision}
+                    loading={isSubmitting}
+                    disabled={!isFormValid}
+                  />
+                </>
+              ) : (
+                // Cuando no existe diagnóstico o está en modo edición: mostrar solo Guardar
                 <Button
-                  label="Editar"
-                  icon="pi pi-pencil"
-                  severity="info"
-                  className="flex-1"
-                  onClick={handleEdit}
-                  disabled={isSubmitting}
-                />
-                <Button
-                  label="Enviar a Revisión"
-                  icon="pi pi-send"
-                  severity="success"
-                  className="flex-1"
-                  onClick={handleSendToRevision}
+                  label="Guardar"
+                  icon="pi pi-check"
+                  className="w-full md:w-auto"
+                  onClick={handleSave}
                   loading={isSubmitting}
                   disabled={!isFormValid}
                 />
-              </>
-            ) : (
-              // Cuando no existe diagnóstico o está en modo edición: mostrar solo Guardar
-              <Button
-                label="Guardar"
-                icon="pi pi-check"
-                className="flex-1"
-                onClick={handleSave}
-                loading={isSubmitting}
-                disabled={!isFormValid}
-              />
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Componente para visualizar observaciones */}
+      <ObservacionViewer
+        visible={observacionViewerVisible}
+        onHide={() => setObservacionViewerVisible(false)}
+        observaciones={getStageObservation()}
+        titulo={`Observaciones - ${stage.title}`}
+        onGuardarCambios={handleGuardarObservaciones}
+      />
     </Sidebar>
   );
 };

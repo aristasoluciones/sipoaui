@@ -8,6 +8,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { Card } from 'primereact/card';
 import { Badge } from 'primereact/badge';
 import { ProgressBar } from 'primereact/progressbar';
+import { getEtapaStatsKeys, PROYECTO_STAGES, getStageById, mapStageIdToStatsKey } from '@/src/config/proyectos';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { LayoutContext } from '../../layout/context/layoutcontext';
 import { ChartData, ChartOptions } from 'chart.js';
@@ -23,11 +24,11 @@ interface UnidadMetricas {
   presupuestoEjecutado: number;
   promedioAvance: number;
   proyectosPorEtapa: {
-    informacion: number;
-    diagnostico: number;
-    programa: number;
-    beneficiarios: number;
-    formulacion: number;
+    InformacionGeneral: number;
+    DiagnosticoProblema: number;
+    ProgramaOperativoAnual: number;
+    EstimacionBeneficiarios: number;
+    FormulacionCuantitativa: number;
   };
 }
 
@@ -71,7 +72,7 @@ const Dashboard = () => {
         presupuestoTotal: 2500000,
         presupuestoEjecutado: 1800000,
         promedioAvance: 72,
-        proyectosPorEtapa: { informacion: 5, diagnostico: 12, programa: 15, beneficiarios: 8, formulacion: 5 }
+        proyectosPorEtapa: { InformacionGeneral: 5, DiagnosticoProblema: 12, ProgramaOperativoAnual: 15, EstimacionBeneficiarios: 8, FormulacionCuantitativa: 5 }
       },
       {
         nombre: 'Secretaría de Obras Públicas',
@@ -79,7 +80,7 @@ const Dashboard = () => {
         presupuestoTotal: 4200000,
         presupuestoEjecutado: 3100000,
         promedioAvance: 74,
-        proyectosPorEtapa: { informacion: 3, diagnostico: 10, programa: 12, beneficiarios: 9, formulacion: 4 }
+        proyectosPorEtapa: { InformacionGeneral: 3, DiagnosticoProblema: 10, ProgramaOperativoAnual: 12, EstimacionBeneficiarios: 9, FormulacionCuantitativa: 4 }
       },
       {
         nombre: 'Dirección de Desarrollo Social',
@@ -87,7 +88,7 @@ const Dashboard = () => {
         presupuestoTotal: 1800000,
         presupuestoEjecutado: 1200000,
         promedioAvance: 67,
-        proyectosPorEtapa: { informacion: 4, diagnostico: 8, programa: 11, beneficiarios: 6, formulacion: 3 }
+        proyectosPorEtapa: { InformacionGeneral: 4, DiagnosticoProblema: 8, ProgramaOperativoAnual: 11, EstimacionBeneficiarios: 6, FormulacionCuantitativa: 3 }
       },
       {
         nombre: 'Secretaría de Educación',
@@ -95,7 +96,7 @@ const Dashboard = () => {
         presupuestoTotal: 3500000,
         presupuestoEjecutado: 2400000,
         promedioAvance: 69,
-        proyectosPorEtapa: { informacion: 2, diagnostico: 7, programa: 10, beneficiarios: 6, formulacion: 3 }
+        proyectosPorEtapa: { InformacionGeneral: 2, DiagnosticoProblema: 7, ProgramaOperativoAnual: 10, EstimacionBeneficiarios: 6, FormulacionCuantitativa: 3 }
       },
       {
         nombre: 'Dirección de Salud',
@@ -103,7 +104,7 @@ const Dashboard = () => {
         presupuestoTotal: 2100000,
         presupuestoEjecutado: 1500000,
         promedioAvance: 71,
-        proyectosPorEtapa: { informacion: 3, diagnostico: 6, programa: 8, beneficiarios: 5, formulacion: 3 }
+        proyectosPorEtapa: { InformacionGeneral: 3, DiagnosticoProblema: 6, ProgramaOperativoAnual: 8, EstimacionBeneficiarios: 5, FormulacionCuantitativa: 3 }
       }
     ];
 
@@ -432,26 +433,17 @@ const Dashboard = () => {
                 <div className="border-1 surface-border border-round p-3">
                   <h6 className="mt-0 mb-3">{unidad.nombre}</h6>
                   <div className="grid text-center">
-                    <div className="col">
-                      <div className="text-900 font-bold">{unidad.proyectosPorEtapa.informacion}</div>
-                      <div className="text-xs text-600">Info General</div>
-                    </div>
-                    <div className="col">
-                      <div className="text-900 font-bold">{unidad.proyectosPorEtapa.diagnostico}</div>
-                      <div className="text-xs text-600">Diagnóstico</div>
-                    </div>
-                    <div className="col">
-                      <div className="text-900 font-bold">{unidad.proyectosPorEtapa.programa}</div>
-                      <div className="text-xs text-600">Programa</div>
-                    </div>
-                    <div className="col">
-                      <div className="text-900 font-bold">{unidad.proyectosPorEtapa.beneficiarios}</div>
-                      <div className="text-xs text-600">Beneficiarios</div>
-                    </div>
-                    <div className="col">
-                      <div className="text-900 font-bold">{unidad.proyectosPorEtapa.formulacion}</div>
-                      <div className="text-xs text-600">Formulación</div>
-                    </div>
+                    {PROYECTO_STAGES.map((stage) => {
+                      const statsKey = mapStageIdToStatsKey(stage.id);
+                      return (
+                        <div key={stage.id} className="col">
+                          <div className="text-900 font-bold">
+                            {unidad.proyectosPorEtapa[statsKey as keyof typeof unidad.proyectosPorEtapa]}
+                          </div>
+                          <div className="text-xs text-600">{stage.shortLabel}</div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

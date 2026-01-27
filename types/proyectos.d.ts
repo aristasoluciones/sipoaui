@@ -20,13 +20,11 @@ export enum EstatusSubactividad {
 }
 
 export enum EstatusProyecto {
-  BORRADOR = 'Borrador',
-  EN_PROGRESO = 'En Progreso',
-  COMPLETADO = 'Completado',
-  CANCELADO = 'Cancelado',
-  EN_REVISION = 'En Revisión',
+  CAPTURA = 'Captura',
+  EN_REVISION = 'EnRevision',
+  OBSERVADO = 'Observado',
   APROBADO = 'Aprobado',
-  RECHAZADO = 'Rechazado'
+  CANCELADO = 'Cancelado',
 }
 
 export enum EtapaProyectoEnum {
@@ -43,6 +41,14 @@ export enum Prioridad {
   ALTA = 'Alta',
   CRITICA = 'Crítica'
 }
+
+export interface Observacion {
+  id: string;
+  texto: string;
+  resuelta: boolean;
+  fechaCreacion: string;
+}
+
 interface Unidad {
   id: number;
   nombre: string;
@@ -69,6 +75,7 @@ interface EtapaCompletada {
   id: number;
   nombre: string;
   estatus: EstatusEtapa;
+  observacion?: string;
 }
 
 export interface ProyectoApi {
@@ -121,6 +128,12 @@ export interface Proyecto {
   // Campos calculados
   etapasCompletadas: EtapaCompletada[];
   porcentajeAvance: number;
+  progreso?: {
+    diagnostico: number;
+    programaOperativo: number;
+    beneficiarios: number;
+    formulacion: number;
+  };
   presupuestoTotal?: number;
   presupuestoDetallado?: PresupuestoDetallado[];
 }
@@ -482,3 +495,29 @@ export interface ProyectoFilter {
   porcentajeMax?: number;
 }
 
+// Interfaces para componentes del wizard de proyectos
+export interface ProyectoWizardProps {
+  project?: Proyecto;
+  onCancel: () => void;
+  isCreating?: boolean;
+  onSuccess?: () => void;
+  onCloseWizard?: () => void;
+  onReloadProjects?: () => void;
+  onProjectSaved?: (savedProject: ProyectoApi) => void;
+  onProjectReload?: () => void;
+  onSavingStart?: () => void;
+  onSavingEnd?: () => void;
+  selectedEjercicioFiscal: number | null;
+  unidades?: any[];
+  empleados?: any[];
+  tiposProyecto?: any[];
+}
+
+export interface Stage {
+  id: number;
+  title: string;
+  description: string;
+  icon: string;
+  color: string;
+  required: boolean;
+}

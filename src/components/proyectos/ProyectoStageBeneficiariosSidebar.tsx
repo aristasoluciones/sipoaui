@@ -9,16 +9,8 @@ import { Button } from 'primereact/button';
 import { Sidebar } from 'primereact/sidebar';
 import { useNotification } from '@/layout/context/notificationContext';
 import { ProyectoEtapasStorage, BeneficiariosData } from '@/src/utils/sessionStorage';
-import { Proyecto } from '@/types/proyectos.d';
-
-interface Stage {
-  id: number;
-  title: string;
-  description: string;
-  icon: string;
-  color: string;
-  required: boolean;
-}
+import { Proyecto, EstatusEtapa, Observacion, Stage } from '@/types/proyectos.d';
+import ObservacionViewer from './ObservacionViewer';
 
 interface ProyectoStageBeneficiariosSidebarProps {
   visible: boolean;
@@ -48,6 +40,7 @@ const ProyectoStageBeneficiariosSidebar: React.FC<ProyectoStageBeneficiariosSide
   const [initialFormValues, setInitialFormValues] = useState<BeneficiariosData>(defaultInitialValues);
   const formikRef = useRef<any>(null);
   const { success, error: showError } = useNotification();
+  const [observacionViewerVisible, setObservacionViewerVisible] = useState(false);
 
   // Esquema de validación con Yup
   const validationSchema = Yup.object().shape({
@@ -100,6 +93,41 @@ const ProyectoStageBeneficiariosSidebar: React.FC<ProyectoStageBeneficiariosSide
     if (formikRef.current) {
       formikRef.current.submitForm();
     }
+  };
+
+  // Verificar si la etapa actual está observada
+  const isStageObserved = (): boolean => {
+    const etapaCompletada = project?.etapasCompletadas?.find(e => e.id === stage.id);
+    return etapaCompletada?.estatus === EstatusEtapa.OBSERVADO;
+  };
+
+  // Obtener la observación de la etapa actual
+  const getStageObservation = (): Observacion[] => {
+    const etapaCompletada = project?.etapasCompletadas?.find(e => e.id === stage.id);
+    if (etapaCompletada?.observacion) {
+      return [{
+        id: `obs-${stage.id}-1`,
+        texto: etapaCompletada.observacion,
+        resuelta: false,
+        fechaCreacion: new Date().toISOString() // Temporal, debería venir de la API
+      }];
+    }
+    return [{
+      id: `obs-${stage.id}-1`,
+      texto: 'Se requieren correcciones en la información proporcionada. Por favor revise y actualice los datos según las observaciones indicadas.',
+      resuelta: false,
+      fechaCreacion: new Date().toISOString()
+    }];
+  };
+
+  const handleGuardarObservaciones = (observacionesActualizadas: Observacion[]) => {
+    // Aquí se implementará la lógica para guardar los cambios en el futuro
+    console.log('Observaciones actualizadas:', observacionesActualizadas);
+    // TODO: Llamar a API para actualizar el estado de las observaciones
+  };
+
+  const handleViewObservation = () => {
+    setObservacionViewerVisible(true);
   };
 
   // Encabezado del sidebar con estilos conservados
@@ -205,26 +233,49 @@ const ProyectoStageBeneficiariosSidebar: React.FC<ProyectoStageBeneficiariosSide
 
         {/* Footer del sidebar */}
         <div className="mt-auto border-top-1 surface-border p-4">
-          <div className="flex gap-2">
-            <Button
-              label="Cancelar"
-              icon="pi pi-times"
-              outlined
-              severity="secondary"
-              className="flex-1"
-              onClick={onCancel}
-              disabled={isSubmitting}
-            />
-            <Button
-              label="Guardar"
-              icon="pi pi-check"
-              className="flex-1"
-              onClick={handleSave}
-              loading={isSubmitting}
-            />
+          <div className="flex flex-column md:flex-row gap-2">
+            {/* Botón de ver observación - solo si la etapa está observada */}
+            {isStageObserved() && (
+              <Button
+                label="Ver Observación"
+                icon="pi pi-exclamation-triangle"
+                severity="warning"
+                outlined
+                className="w-full md:w-auto"
+                onClick={handleViewObservation}
+              />
+            )}
+
+            <div className="flex gap-2 flex-1 md:justify-content-end">
+              <Button
+                label="Cancelar"
+                icon="pi pi-times"
+                outlined
+                severity="secondary"
+                className="w-full md:w-auto"
+                onClick={onCancel}
+                disabled={isSubmitting}
+              />
+              <Button
+                label="Guardar"
+                icon="pi pi-check"
+                className="w-full md:w-auto"
+                onClick={handleSave}
+                loading={isSubmitting}
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Componente para visualizar observaciones */}
+      <ObservacionViewer
+        visible={observacionViewerVisible}
+        onHide={() => setObservacionViewerVisible(false)}
+        observaciones={getStageObservation()}
+        titulo={`Observaciones - ${stage.title}`}
+        onGuardarCambios={handleGuardarObservaciones}
+      />
     </Sidebar>
   );
 };

@@ -22,6 +22,7 @@ interface UseProjectsManagementReturn {
   // Filtros y búsqueda
   globalFilter: string;
   statusFilter: string | null;
+  etapaFilter: string | null;
   selectedEjercicioFiscal: number | null;
   selectedEjercicioFiscalAnio: number | null;
 
@@ -39,6 +40,7 @@ interface UseProjectsManagementReturn {
   loadMoreProjects: () => Promise<void>;
   setGlobalFilter: (filter: string) => void;
   setStatusFilter: (filter: string | null) => void;
+  setEtapaFilter: (filter: string | null) => void;
   changeSelectedEjercicioFiscal: (id: number) => void;
 
   // Dialog actions
@@ -77,6 +79,7 @@ export const useProjectsManagement = (): UseProjectsManagementReturn => {
   // Filtros
   const [globalFilter, setGlobalFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [etapaFilter, setEtapaFilter] = useState<string | null>(null);
   const [selectedEjercicioFiscal, setSelectedEjercicioFiscal] = useState<number | null>(null);
   const [selectedEjercicioFiscalAnio, setSelectedEjercicioFiscalAnio] = useState<number | null>(null);
 
@@ -110,10 +113,10 @@ export const useProjectsManagement = (): UseProjectsManagementReturn => {
 
   // Función para obtener el ejercicio fiscal seleccionado por ID
   const getSelectedEjercicioFiscal = useCallback((): EjercicioFiscal | null => {
-    if (ejerciciosFiscales.length === 0) {
+    if (ejerciciosFiscales.length === 0 || !selectedEjercicioFiscal) {
       return null;
     }
-    const ejercicio = ejerciciosFiscales.find(e => e.anio === selectedEjercicioFiscal);
+    const ejercicio = ejerciciosFiscales.find(e => e.id === selectedEjercicioFiscal);
     return ejercicio || null;
   }, [ejerciciosFiscales, selectedEjercicioFiscal]);
 
@@ -143,9 +146,10 @@ export const useProjectsManagement = (): UseProjectsManagementReturn => {
       project.responsable.nombre.toLowerCase().includes(globalFilter.toLowerCase());
 
     const matchesStatus = !statusFilter || project.estatus === statusFilter;
+    const matchesEtapa = !etapaFilter || project.etapaActual === etapaFilter;
 
-    return matchesGlobal && matchesStatus;
-  }), [proyectos, globalFilter, statusFilter]);
+    return matchesGlobal && matchesStatus && matchesEtapa;
+  }), [proyectos, globalFilter, statusFilter, etapaFilter]);
 
   // Actualizar proyectos mostrados cuando cambian los filtros
   useEffect(() => {
@@ -202,6 +206,7 @@ export const useProjectsManagement = (): UseProjectsManagementReturn => {
     // Limpiar filtros
     setGlobalFilter('');
     setStatusFilter(null);
+    setEtapaFilter(null);
 
     // Recargar proyectos para el nuevo ejercicio fiscal
     if (selectedEjercicioFiscalAnio) {
@@ -372,6 +377,7 @@ export const useProjectsManagement = (): UseProjectsManagementReturn => {
     // Filtros y búsqueda
     globalFilter,
     statusFilter,
+    etapaFilter,
     selectedEjercicioFiscal,
     selectedEjercicioFiscalAnio,
 
@@ -389,6 +395,7 @@ export const useProjectsManagement = (): UseProjectsManagementReturn => {
     loadMoreProjects,
     setGlobalFilter,
     setStatusFilter,
+    setEtapaFilter,
     changeSelectedEjercicioFiscal,
 
     // Dialog actions

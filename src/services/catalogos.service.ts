@@ -31,11 +31,6 @@ export class CatalogoService {
   }
 
   async getAll() {
-    if (this.shouldUseMocks()) {
-      await mockUtils.delay();
-      return mockUtils.mockResponse(this.getMockData());
-    }
-    
     return await http.get(this.getApiEndpoint()).then(response => response.data);
   }
 

@@ -3,7 +3,6 @@ export { useProjectsManagement } from '@/src/hooks/useProjectsManagement';
 export { default as ProjectsPageActions } from './ProjectsPageActions';
 export { default as EjercicioFiscalSelector } from './EjercicioFiscalSelector';
 export { default as ProjectList } from './ProjectList';
-export { default as ProjectWizardDialog } from './ProjectWizardDialog';
 export { default as ProyectoWizard } from './ProyectoWizard';
 export { default as ProyectoStageGeneralSidebar } from './ProyectoStageGeneralSidebar';
 export { default as ProyectoStageDiagnosticoSidebar } from './ProyectoStageDiagnosticoSidebar';

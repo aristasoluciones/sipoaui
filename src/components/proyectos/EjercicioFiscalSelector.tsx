@@ -50,9 +50,9 @@ const EjercicioFiscalSelector: React.FC<EjercicioFiscalSelectorProps> = ({
   }
 
   return (
-    <div className="card mb-3" style={{background: 'var(--primary-50)', borderColor: 'var(--primary-200)'}}>
+    <div className="mb-2 bg-white border-round p-3">
       {/* Header principal */}
-      <div className="flex flex-column sm:flex-row justify-content-between align-items-start sm:align-items-center gap-3">
+      <div className="flex flex-column lg:flex-row justify-content-between align-items-center gap-3">
         <div className="flex flex-column gap-2 flex-1">
           <h2 className="text-xl font-bold text-900 m-0">Proyectos del Ejercicio Fiscal</h2>
           
@@ -71,8 +71,31 @@ const EjercicioFiscalSelector: React.FC<EjercicioFiscalSelectorProps> = ({
           </div>
         </div>
 
+        {/* Badges de estado - centrados en lg, derecha en md, abajo en mobile */}
+        {selectedEjercicio && (
+          <div className="flex flex-wrap justify-content-center lg:justify-content-center gap-2 order-3 lg:order-2 flex-1 lg:flex-initial">
+            {/* Badge de ejercicio activo/inactivo - prioridad visual */}
+            <Badge
+              value={isEjercicioFiscalInactivo(selectedEjercicio) ? "Ejercicio Inactivo" : "Ejercicio Activo"}
+              severity={isEjercicioFiscalInactivo(selectedEjercicio) ? "danger" : "success"}
+            />
+            
+            {/* Badge de ejercicio cerrado/abierto */}
+            <Badge
+              value={isEjercicioFiscalCerrado(selectedEjercicio) ? "Ejercicio Cerrado" : "Ejercicio Abierto"}
+              severity={isEjercicioFiscalCerrado(selectedEjercicio) ? "warning" : "info"}
+            />
+            
+            {/* Badge de captura - muestra inactivo si el ejercicio está inactivo */}
+            <Badge
+              value={permiteCapturaProyectos(selectedEjercicio) ? "Captura Habilitada" : "Captura Deshabilitada"}
+              severity={permiteCapturaProyectos(selectedEjercicio) ? "success" : "danger"}
+            />
+          </div>
+        )}
+
         {/* Dropdown selector - derecha en desktop, abajo en mobile */}
-        <div className="flex flex-column gap-2 w-full sm:w-auto">
+        <div className="flex flex-column gap-2 w-full sm:w-auto order-2 lg:order-3">
           <label htmlFor="ejercicio-fiscal-header-select" className="font-semibold text-700">
             Cambiar Ejercicio Fiscal
           </label>
@@ -90,29 +113,6 @@ const EjercicioFiscalSelector: React.FC<EjercicioFiscalSelectorProps> = ({
           />
         </div>
       </div>
-
-      {/* Badges de estado - Se colapsan en mobile */}
-      {selectedEjercicio && (
-        <div className="flex flex-wrap gap-2">
-          {/* Badge de ejercicio activo/inactivo - prioridad visual */}
-          <Badge
-            value={isEjercicioFiscalInactivo(selectedEjercicio) ? "Ejercicio Inactivo" : "Ejercicio Activo"}
-            severity={isEjercicioFiscalInactivo(selectedEjercicio) ? "danger" : "success"}
-          />
-          
-          {/* Badge de ejercicio cerrado/abierto */}
-          <Badge
-            value={isEjercicioFiscalCerrado(selectedEjercicio) ? "Ejercicio Cerrado" : "Ejercicio Abierto"}
-            severity={isEjercicioFiscalCerrado(selectedEjercicio) ? "warning" : "info"}
-          />
-          
-          {/* Badge de captura - muestra inactivo si el ejercicio está inactivo */}
-          <Badge
-            value={permiteCapturaProyectos(selectedEjercicio) ? "Captura Habilitada" : "Captura Deshabilitada"}
-            severity={permiteCapturaProyectos(selectedEjercicio) ? "success" : "danger"}
-          />
-        </div>
-      )}
     </div>
   );
 };

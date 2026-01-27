@@ -87,7 +87,7 @@ const ProjectsPage: React.FC = () => {
           <BreadCrumb
             model={breadcrumbItems}
             home={breadcrumbHome}
-            className="mb-4"
+            className="mb-2"
           />
         </div>
       </div>

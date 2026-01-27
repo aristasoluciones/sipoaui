@@ -5,11 +5,12 @@ import { useRouter, useParams } from 'next/navigation';
 import { BreadCrumb } from 'primereact/breadcrumb';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Button } from 'primereact/button';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import PoaManager from '@/src/components/proyectos/poa/PoaManager';
 import { usePermissions } from '@/src/hooks/usePermissions';
 import { PageAccessDenied } from '@/src/components/AccessDeneid';
 import { ProyectoService } from '@/src/services/proyecto';
-import { ProgramaOperativoAnualApi, ActividadPoaApi, SubactividadPoaApi } from '@/types/proyectos';
+import { ProgramaOperativoAnualApi, ActividadPoaApi, SubactividadPoaApi, EstatusEtapa } from '@/types/proyectos.d';
 import { TipoActividad, Entregable, TipoActividadApi, EntregableApi } from '@/types/catalogos';
 import { useNotification } from '@/layout/context/notificationContext';
 import { CatalogoService } from '@/src/services/catalogos.service';
@@ -29,6 +30,7 @@ const PoaPage: React.FC = () => {
   const [tiposActividad, setTiposActividad] = useState<TipoActividad[]>([]);
   const [entregables, setEntregables] = useState<Entregable[]>([]);
   const [catalogosLoading, setCatalogosLoading] = useState(false);
+  const [solicitandoRevision, setSolicitandoRevision] = useState(false);
   const isLoadingRef = useRef(false); // Ref para controlar race conditions
 
   useEffect(() => {
@@ -130,7 +132,7 @@ const PoaPage: React.FC = () => {
         poa.id, 
         actividadData
       );
-      setActividades(prev => [...prev, newActividad]);
+      setActividades(prev => [newActividad, ...prev]);
     } catch (error: any) {
       // El hijo se encargará de mostrar el error
       throw error;
@@ -152,7 +154,6 @@ const PoaPage: React.FC = () => {
       ));
       showMsgSuccess('Éxito', 'Actividad actualizada exitosamente');
     } catch (error: any) {
-      console.error('Error updating actividad:', error);
       showMsgError('Error', 'No se pudo actualizar la actividad');
     }
   };
@@ -165,7 +166,6 @@ const PoaPage: React.FC = () => {
       setActividades(prev => prev.filter(act => act.id !== actividadId));
       showMsgSuccess('Éxito', 'Actividad eliminada exitosamente');
     } catch (error: any) {
-      console.error('Error deleting actividad:', error);
       showMsgError('Error', 'No se pudo eliminar la actividad');
     }
   };
@@ -226,11 +226,41 @@ const PoaPage: React.FC = () => {
     }
   };
 
+  const handleSolicitarRevision = () => {
+    confirmDialog({
+      message: '¿Está seguro que desea enviar el POA a revisión? Una vez enviado, no podrá realizar cambios hasta que sea aprobado u observado.',
+      header: 'Confirmar Solicitud de Revisión',
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Sí, enviar a revisión',
+      rejectLabel: 'Cancelar',
+      accept: async () => {
+        if (!poa) return;
+        
+        try {
+          setSolicitandoRevision(true);
+          const poaActualizado = await ProyectoService.solicitarRevisionPoa(projectUuid);
+          setPoa(poaActualizado);
+          showMsgSuccess('Éxito', 'El POA ha sido enviado a revisión exitosamente');
+        } catch (error: any) {
+          showMsgError('Error', 'No se pudo enviar el POA a revisión');
+        } finally {
+          setSolicitandoRevision(false);
+        }
+      }
+    });
+  };
+
   const breadcrumbItems = [
     { label: 'Inicio', url: '/' },
     { label: 'Proyectos', url: '/proyectos' },
     { label: projectName || 'Proyecto', url: `/proyectos/${projectUuid}` },
     { label: 'Programa Operativo Anual' }
+  ];
+
+  // Versión simplificada para mobile
+  const breadcrumbItemsMobile = [
+    { label: projectName || 'Proyecto', url: `/proyectos/${projectUuid}` },
+    { label: 'POA' }
   ];
 
   const breadcrumbHome = { icon: 'pi pi-home', url: '/' };
@@ -248,34 +278,94 @@ const PoaPage: React.FC = () => {
     );
   }
 
+  const isEnRevision = poa?.estatus === EstatusEtapa.EN_REVISION;
+  const isAprobado = poa?.estatus === EstatusEtapa.APROBADO;
+  const puedeEditarPoa = !isEnRevision && !isAprobado;
+
   return (
     <div className="grid">
+      <ConfirmDialog />
       <div className="col-12">
-        <BreadCrumb
-          model={breadcrumbItems}
-          home={breadcrumbHome}
-          className="mb-3"
-        />
+        {/* Desktop breadcrumb */}
+        <div className="hidden md:block">
+          <BreadCrumb
+            model={breadcrumbItems}
+            home={breadcrumbHome}
+            className="mb-1"
+          />
+        </div>
+        
+        {/* Mobile breadcrumb - simplified */}
+        <div className="block md:hidden">
+          <BreadCrumb
+            model={breadcrumbItemsMobile}
+            home={breadcrumbHome}
+            className="mb-1"
+          />
+        </div>
       </div>
 
       <div className="col-12">
         {poa ? (
-          <PoaManager 
-            projectUuid={projectUuid} 
-            projectName={projectName} 
-            poaData={poa}
-            actividades={actividades}
-            tiposActividad={tiposActividad}
-            entregables={entregables}
-            onCreateActividad={handleCreateActividad}
-            onUpdateActividad={handleUpdateActividad}
-            onDeleteActividad={handleDeleteActividad}
-            onCreateSubactividad={handleCreateSubactividad}
-            onUpdateSubactividad={handleUpdateSubactividad}
-            onDeleteSubactividad={handleDeleteSubactividad}
-          />
+          <>
+            {/* Toolbar con título y botón de volver */}
+            <div className="flex justify-content-between align-items-center p-3 border-1 surface-border border-round-lg bg-white mb-2">
+              <div>
+                <h4 className="text-lg font-semibold text-900 m-0 mb-1">Programa Operativo Anual</h4>
+                <p className="text-600 text-sm m-0">
+                  {projectName && <span className="mr-3">{projectName}</span>}
+                  {actividades.length} {actividades.length === 1 ? 'actividad' : 'actividades'} y {actividades.reduce((sum, act) => sum + act.total_subactividades, 0)} {actividades.reduce((sum, act) => sum + act.total_subactividades, 0) === 1 ? 'subactividad' : 'subactividades'}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {/* Desktop button */}
+                <div className="hidden md:block">
+                  <Button
+                    label="Volver al Proyecto"
+                    icon="pi pi-arrow-left"
+                    severity="secondary"
+                    outlined
+                    onClick={() => router.push(`/proyectos/${projectUuid}`)}
+                  />
+                </div>
+                
+                {/* Mobile button */}
+                <div className="block md:hidden">
+                  <Button
+                    icon="pi pi-arrow-left"
+                    severity="secondary"
+                    outlined
+                    tooltip="Volver al Proyecto"
+                    tooltipOptions={{ position: 'bottom' }}
+                    onClick={() => router.push(`/proyectos/${projectUuid}`)}
+                    className="p-button-sm"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <PoaManager 
+              projectUuid={projectUuid} 
+              projectName={projectName} 
+              poaData={poa}
+              actividades={actividades}
+              tiposActividad={tiposActividad}
+              entregables={entregables}
+              onCreateActividad={handleCreateActividad}
+              onUpdateActividad={handleUpdateActividad}
+              onDeleteActividad={handleDeleteActividad}
+              onCreateSubactividad={handleCreateSubactividad}
+              onUpdateSubactividad={handleUpdateSubactividad}
+              onDeleteSubactividad={handleDeleteSubactividad}
+              readOnly={!puedeEditarPoa}
+              onSolicitarRevision={handleSolicitarRevision}
+              solicitandoRevision={solicitandoRevision}
+              isEnRevision={isEnRevision}
+              isAprobado={isAprobado}
+            />
+          </>
         ) : (
-          <div className="flex flex-column align-items-center justify-content-center p-8 text-center border-2 border-dashed border-300 border-round-lg">
+          <div className="flex flex-column align-items-center justify-content-center p-8 text-center border-2 border-dashed border-300 border-round-lg bg-white">
               
                 <i className="pi pi-calendar text-6xl text-primary mb-3"></i>
                 <h3 className="text-900 mb-2">Programa Operativo Anual</h3>

@@ -4,13 +4,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from 'primereact/button';
 import { Toast } from 'primereact/toast';
-import { Dialog } from 'primereact/dialog';
 
 import { Badge } from 'primereact/badge';
 import { ProgressBar } from 'primereact/progressbar';
 
 import { Avatar } from 'primereact/avatar';
 import ProyectoStageGeneralSidebar from './ProyectoStageGeneralSidebar';
+import ProyectoStageGeneralView from './ProyectoStageGeneralView';
 import ProyectoStageDiagnosticoSidebar from './ProyectoStageDiagnosticoSidebar';
 import ProyectoStageDiagnosticoView from './ProyectoStageDiagnosticoView';
 import ProyectoStagePoaSidebar from './ProyectoStagePoaSidebar';
@@ -18,7 +18,7 @@ import ProyectoStageBeneficiariosSidebar from './ProyectoStageBeneficiariosSideb
 import ProyectoStageFormulacionSidebar from './ProyectoStageFormulacionSidebar';
 
 import { useProjectOperations } from '@/src/hooks/useProjectOperations';
-import { Proyecto, ProyectoFormData, ProyectoApi } from '@/types/proyectos';
+import { Proyecto, ProyectoFormData, ProyectoApi, EtapaProyectoEnum } from '@/types/proyectos';
 import { Prioridad, EstatusEtapa } from '@/types/proyectos.d';
 import { useNotification } from '@/layout/context/notificationContext';
 import { formatApiError } from '@/src/utils';
@@ -31,9 +31,13 @@ interface ProyectoWizardProps {
   onCloseWizard?: () => void;
   onReloadProjects?: () => void;
   onProjectSaved?: (savedProject: ProyectoApi) => void;
+  onProjectReload?: () => void;
   onSavingStart?: () => void;
   onSavingEnd?: () => void;
   selectedEjercicioFiscal: number | null;
+  unidades?: any[];
+  empleados?: any[];
+  tiposProyecto?: any[];
 }
 
 interface Stage {
@@ -53,9 +57,13 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
   onCloseWizard,
   onReloadProjects,
   onProjectSaved,
+  onProjectReload,
   onSavingStart,
   onSavingEnd,
-  selectedEjercicioFiscal
+  selectedEjercicioFiscal,
+  unidades = [],
+  empleados = [],
+  tiposProyecto = []
 }) => {
   const router = useRouter();
   // Estado local para saving
@@ -80,7 +88,6 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     showSuccessMessages: false // Los mensajes se manejan en el componente
   });
   const { success:showMsgSuccess, error:showMsgError, warning:showMsgWarning } = useNotification();
-  const [loading, setSaving] = useState(false);
   const [formData, setFormData] = useState<ProyectoFormData>({
     uuid: project?.uuid || undefined,
     codigo: project?.codigo || '',
@@ -92,7 +99,6 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     responsable_id: project?.responsable?.id || null,
     tipo_proyecto_id: project?.tipoProyecto?.id || null
   });
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [activeStage, setActiveStage] = useState<number | null>(null);
   const [projectCreated, setProjectCreated] = useState(!!project); // true si ya existe un proyecto
@@ -121,7 +127,8 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
       project.etapasCompletadas.forEach(etapa => {
         // Mapear el ID de la etapa completada al ID del stage
         // Asumiendo que el ID de EtapaCompletada corresponde al ID del stage
-        newCompletedStages.add(etapa.id);
+        if(etapa.estatus === EstatusEtapa.APROBADO)
+          newCompletedStages.add(etapa.id);
       });
       
       setCompletedStages(newCompletedStages);
@@ -229,6 +236,9 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
 
   // Verificar si una etapa está desbloqueada
   const isStageUnlocked = (stageId: number): boolean => {
+    // Para proyectos nuevos, la primera etapa siempre está desbloqueada
+    if (isCreating && stageId === 1) return true;
+
     if (stageId === 1) return true; // Primera etapa siempre desbloqueada
     
     // Si existe un proyecto cargado con etapa actual
@@ -262,11 +272,27 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
 
   // Obtener estado de una etapa
   const getStageStatus = (stageId: number): EstatusEtapa | 'locked' | 'optional' => {
-    if (isStageCompleted(stageId)) return EstatusEtapa.APROBADO;
-    if (!isStageUnlocked(stageId)) return 'locked';
-    const stage = stages.find(s => s.id === stageId);
-    if (stage && !stage.required) return 'optional';
-    return EstatusEtapa.CAPTURA;
+  
+    // Para proyectos nuevos, solo la etapa 1 está disponible, las demás están bloqueadas
+    if (isCreating) {
+      return stageId === 1 ? EstatusEtapa.CAPTURA : 'locked';
+    }
+      
+    // Buscar la etapa en etapasCompletadas de la API
+    const etapaCompletada = project?.etapasCompletadas?.find(e => e.id === stageId);
+
+    // Si la etapa existe en etapasCompletadas, devolver su estatus
+    if (etapaCompletada) {
+      return etapaCompletada.estatus;
+    }
+    // Si la etapa no esta completada pero la anterior si, está en captura
+    if (stageId > 1) {
+      const previousStageCompleted = isStageCompleted(stageId - 1);
+      if (previousStageCompleted) {
+        return EstatusEtapa.CAPTURA;
+      }
+    }
+    return 'locked';
   };
 
   // Manejar apertura de sidebar para editar etapa
@@ -290,20 +316,23 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
 
   // Verificar si una etapa está en modo solo lectura (Aprobado)
   const isStageReadOnly = (stageId: number): boolean => {
+    // Para proyectos nuevos, ninguna etapa está en modo solo lectura
+    if (isCreating) return false;
+
     if (!project?.etapaActual || !currentEtapaEstatus) return false;
-    
+
     const currentStageId = mapEtapaActualToStageId(project.etapaActual);
-    
-    // Si es la etapa actual y está aprobada, es solo lectura
-    if (stageId === currentStageId && currentEtapaEstatus === 'Aprobado') {
+
+    // Si es la etapa actual y está aprobada o en revisión, es solo lectura
+    if (stageId === currentStageId && (currentEtapaEstatus === EstatusEtapa.APROBADO || currentEtapaEstatus === EstatusEtapa.EN_REVISION)) {
       return true;
     }
-    
+
     // Si es una etapa anterior a la actual, también es solo lectura
     if (stageId < currentStageId) {
       return true;
     }
-    
+
     return false;
   };
 
@@ -356,64 +385,16 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     handleCloseSidebar();
   };
 
-  // Enviar proyecto a revisión
-  const handleFinishProject = async () => {
-    try {
-      setSaving(true);
-      await handleSaveProject(formData);
-    } catch (_error) {
-      showMsgError('Error', 'No se pudo enviar el proyecto a revisión');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // Manejar cancelación
   const handleCancel = () => {
-    setShowConfirmDialog(true);
-  };
-
-  // Confirmar cancelación
-  const confirmCancel = () => {
-    setShowConfirmDialog(false);
     onCancel();
   };
 
   return (
     <>
       <div className="wizard-container h-full">
-        {/* Header */}
-        <div className="flex justify-content-between align-items-center p-4 border-bottom-1 surface-border">
-          <div>
-            <h2 className="text-2xl font-bold text-900 m-0">
-              {isCreating ? 'Nuevo Proyecto' : `Actualizar: ${project?.nombre}`}
-            </h2>
-            <p className="text-600 m-0 mt-1">
-              Complete todas las etapas requeridas para enviar a revisión
-            </p>
-          </div>
-          
-          <div className="flex gap-2">
-            <Button
-              label="Regresar al listado"
-              icon="pi pi-arrow-left"
-              severity="secondary"
-              outlined
-              onClick={handleCancel}
-            />
-            <Button
-              label="Enviar a revisión"
-              icon="pi pi-send"
-              severity="success"
-              loading={loading}
-              onClick={handleFinishProject}
-              disabled={!areAllRequiredStagesCompleted()}
-            />
-          </div>
-        </div>
-
         {/* Contenido Principal - Resumen de Etapas */}
-        <div className="p-4">
+        <div className="">
           <div className="grid">
             {stages.map((stage) => {
               const progress = getStageProgress(stage.id);
@@ -424,9 +405,11 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
                 <div key={stage.id} className="col-12 md:col-6 lg:col-4">
                   <div
                     className={`bg-white border border-round border-gray-200 h-full border-1 cursor-pointer transition-all transition-duration-200 ${
-                      isLocked
-                        ? 'opacity-50 cursor-not-allowed'
-                        : 'hover:shadow-4'
+                      status === EstatusEtapa.EN_REVISION
+                        ? 'border-warning-400 bg-orange-50 hover:shadow-4'
+                        : isLocked
+                          ? 'opacity-50 cursor-not-allowed'
+                          : 'hover:shadow-4'
                     }`}
                     onClick={() => !isLocked && handleEditStage(stage.id)}
                   >
@@ -458,6 +441,13 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
                               className="text-xs"
                             />
                           )}
+                          {status === EstatusEtapa.EN_REVISION && (
+                            <Badge 
+                              value="Revision" 
+                              severity="warning" 
+                              className="text-xs"
+                            />
+                          )}
                           {status === 'locked' && (
                             <Badge 
                               value="Bloqueado" 
@@ -485,18 +475,22 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
                       <div className="flex justify-content-end mt-3">
                         <Button
                           label={
-                            isLocked 
-                              ? 'Bloqueado' 
-                              : status === EstatusEtapa.APROBADO 
-                                ? 'Revisar' 
-                                : 'Editar'
+                            status === EstatusEtapa.EN_REVISION
+                              ? 'Ver'
+                              : isLocked 
+                                ? 'Bloqueado' 
+                                : status === EstatusEtapa.APROBADO 
+                                  ? 'Revisar' 
+                                  : 'Editar'
                           }
                           icon={
-                            isLocked 
-                              ? 'pi pi-lock' 
-                              : status === EstatusEtapa.APROBADO 
-                                ? 'pi pi-eye' 
-                                : 'pi pi-pencil'
+                            status === EstatusEtapa.EN_REVISION
+                              ? 'pi pi-eye'
+                              : isLocked 
+                                ? 'pi pi-lock' 
+                                : status === EstatusEtapa.APROBADO 
+                                  ? 'pi pi-eye' 
+                                  : 'pi pi-pencil'
                           }
                           size="small"
                           outlined
@@ -517,22 +511,36 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
 
         {/* Componente Sidebar para edición de etapas */}
         {activeStage === 1 ? (
-          <ProyectoStageGeneralSidebar
-            visible={sidebarVisible}
-            onHide={handleCloseSidebar}
-            stage={stages.find(s => s.id === activeStage)!}
-            formData={formData}
-            onInputChange={handleInputChange}
-            onSave={handleSaveStage}
-            onCancel={handleCloseSidebar}
-          />
+          (project || isCreating) ? (
+            isStageReadOnly(1) && project ? (
+              <ProyectoStageGeneralView
+                visible={sidebarVisible}
+                onHide={handleCloseSidebar}
+                project={project}
+              />
+            ) : (
+              <ProyectoStageGeneralSidebar
+                visible={sidebarVisible}
+                onHide={handleCloseSidebar}
+                stage={stages.find(s => s.id === activeStage)!}
+                formData={formData}
+                onInputChange={handleInputChange}
+                onSave={handleSaveStage}
+                onCancel={handleCloseSidebar}
+                unidades={unidades}
+                empleados={empleados}
+                tiposProyecto={tiposProyecto}
+              />
+            )
+          ) : null
         ) : activeStage === 2 ? (
           project ? (
             isStageReadOnly(2) ? (
               <ProyectoStageDiagnosticoView
                 visible={sidebarVisible}
                 onHide={handleCloseSidebar}
-                projectUuid={project.uuid}
+                project={project}
+                onProjectReload={onProjectReload}
               />
             ) : (
               <ProyectoStageDiagnosticoSidebar
@@ -541,6 +549,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
                 stage={stages.find(s => s.id === activeStage)!}
                 project={project}
                 onCancel={handleCloseSidebar}
+                onProjectReload={onProjectReload}
               />
             )
           ) : null
@@ -579,48 +588,6 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
           ) : null
         ) : null}
       </div>
-
-      {/* Dialog de confirmación para cancelar */}
-      <Dialog
-        visible={showConfirmDialog}
-        onHide={() => setShowConfirmDialog(false)}
-        header={
-          <span className="text-xl font-semibold">Confirmar Acción</span>
-        }
-        modal
-        style={{ width: '500px' }}
-        footer={
-          <div className="flex justify-content-end gap-2">
-            <Button
-              label="Cancelar"
-              icon="pi pi-times"
-              severity="secondary"
-              outlined
-              onClick={() => setShowConfirmDialog(false)}
-            />
-            <Button
-              label="Sí, regresar"
-              icon="pi pi-check"
-              severity="danger"
-              onClick={confirmCancel}
-            />
-          </div>
-        }
-      >
-        <div className="grid p-3">
-          <div className="col-12">
-            <div className="flex align-items-start gap-3 p-4 bg-orange-50 border-round">
-              <i className="pi pi-exclamation-triangle text-orange-600 text-3xl"></i>
-              <div>
-                <p className="text-900 font-semibold mb-2">¿Está seguro que desea regresar?</p>
-                <p className="text-600 m-0">
-                  Los cambios no guardados se perderán y tendrá que volver a capturar la información.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Dialog>
     </>
   );
 };

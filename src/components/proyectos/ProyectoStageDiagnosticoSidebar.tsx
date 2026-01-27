@@ -9,7 +9,7 @@ import { Button } from 'primereact/button';
 import { Sidebar } from 'primereact/sidebar';
 import { ProyectoEtapasStorage } from '@/src/utils/sessionStorage';
 import { useProjectOperations } from '@/src/hooks/useProjectOperations';
-import { Proyecto, DiagnosticoData } from '@/types/proyectos.d';
+import { Proyecto, DiagnosticoData, EstatusEtapa } from '@/types/proyectos.d';
 
 interface Stage {
   id: number;
@@ -26,6 +26,7 @@ interface ProyectoStageDiagnosticoSidebarProps {
   stage: Stage;
   project: Proyecto;
   onCancel: () => void;
+  onProjectReload?: () => void;
 }
 
 const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarProps> = ({
@@ -33,7 +34,8 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
   onHide,
   stage,
   project,
-  onCancel
+  onCancel,
+  onProjectReload
 }) => {
   // Valores iniciales por defecto
   const defaultInitialValues: DiagnosticoData = {
@@ -52,15 +54,23 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [initialFormValues, setInitialFormValues] = useState<DiagnosticoData>(defaultInitialValues);
+  const [hasDiagnosticoSaved, setHasDiagnosticoSaved] = useState(false);
+  const [isFormValid, setIsFormValid] = useState(false);
+  const isFormValidRef = useRef(false);
+  const [isEditing, setIsEditing] = useState(false);
   const formikRef = useRef<any>(null);
   const hasLoadedData = useRef(false);
 
   // Usar el hook centralizado de operaciones
-  const { handleSaveDiagnostico, handleGetDiagnostico } = useProjectOperations({
+  const { handleSaveDiagnostico, handleGetDiagnostico, handleSolicitarRevision } = useProjectOperations({
     isCreating: false,
     selectedProject: project,
     onSuccess: () => {
-      onHide(); // Cierra el sidebar después de guardar exitosamente
+      onProjectReload?.(); // Recargar el proyecto
+      // Solo cerrar el sidebar si NO está en modo edición (es decir, primera creación)
+      if (!isEditing) {
+        onHide();
+      }
     },
     onSavingStart: () => setIsSubmitting(true),
     onSavingEnd: () => setIsSubmitting(false),
@@ -110,11 +120,14 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
         const diagnosticoFromApi = await handleGetDiagnostico(project.uuid);
         if (diagnosticoFromApi) {
           setInitialFormValues(diagnosticoFromApi);
+          setHasDiagnosticoSaved(true);
         } else {
           setInitialFormValues(defaultInitialValues);
+          setHasDiagnosticoSaved(false);
         }
       } catch (error) {
         setInitialFormValues(defaultInitialValues);
+        setHasDiagnosticoSaved(false);
       }
     };
 
@@ -125,11 +138,15 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
     // Resetear el flag cuando se cierra el sidebar
     if (!visible) {
       hasLoadedData.current = false;
+      setHasDiagnosticoSaved(false); // Resetear el estado de diagnóstico guardado
+      setIsEditing(false); // Resetear el estado de edición
     }
   }, [visible, project.uuid, handleGetDiagnostico]);
 
   const handleSubmit = async (values: DiagnosticoData) => {
     await handleSaveDiagnostico(project.uuid, values);
+    setHasDiagnosticoSaved(true); // Marcar que ahora existe un diagnóstico guardado
+    setIsEditing(false); // Resetear el estado de edición después de guardar
   };
 
   const handleSave = () => {
@@ -137,6 +154,23 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
     if (formikRef.current) {
       formikRef.current.submitForm();
     }
+  };
+
+  const handleSendToRevision = async () => {
+    try {
+      await handleSolicitarRevision(project.uuid);
+      onHide(); // Cerrar el sidebar después de enviar a revisión
+    } catch (error) {
+      // El error ya se maneja en el hook
+    }
+  };
+
+  const handleEdit = () => {
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
   };
 
   // Encabezado del sidebar con estilos conservados
@@ -157,7 +191,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
       position="right"
       onHide={onHide}
       header={customHeader()}
-      className="w-full md:w-10 lg:w-6"
+      className="w-full md:w-6 lg:w-8"
       modal
       pt={{
         header: { className: 'border-bottom-1 surface-border' },
@@ -174,8 +208,15 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
             enableReinitialize={true}
             innerRef={formikRef}
           >
-            {({ values, errors, touched, isValid, dirty }) => (
-              <Form>
+            {({ values, errors, touched, isValid, dirty }) => {
+              // Actualizar el estado de validación del formulario
+              if (isFormValidRef.current !== isValid) {
+                isFormValidRef.current = isValid;
+                setIsFormValid(isValid);
+              }
+
+              return (
+                <Form>
                 {/* Campo principal: Diagnóstico */}
                 <fieldset className="mb-4 border-1 border-round surface-border surface-card">
                   <div className="field px-2 pb-2">
@@ -188,6 +229,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                           {...field}
                           id="diagnostico"
                           rows={5}
+                          readOnly={hasDiagnosticoSaved && !isEditing}
                           className={`w-full ${errors.diagnostico && touched.diagnostico ? 'p-invalid' : ''}`}
                           placeholder="Describe el diagnóstico general del problema..."
                         />
@@ -215,6 +257,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                               {...field}
                               id="efectos"
                               rows={8}
+                              readOnly={hasDiagnosticoSaved && !isEditing}
                               className={`w-full ${errors.efectos && touched.efectos ? 'p-invalid' : ''}`}
                               placeholder="Describe los efectos del problema..."
                             />
@@ -241,6 +284,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                               {...field}
                               id="fines"
                               rows={8}
+                              readOnly={hasDiagnosticoSaved && !isEditing}
                               className={`w-full ${errors.fines && touched.fines ? 'p-invalid' : ''}`}
                               placeholder="Describe los fines de la solución..."
                             />
@@ -271,6 +315,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                 {...field}
                                 id="poblacionAfectada"
                                 rows={4}
+                                readOnly={hasDiagnosticoSaved && !isEditing}
                                 className={`w-full ${errors.poblacionAfectada && touched.poblacionAfectada ? 'p-invalid' : ''}`}
                                 placeholder="Describe la población afectada..."
                               />
@@ -289,6 +334,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                 {...field}
                                 id="descripcionProblema"
                                 rows={6}
+                                readOnly={hasDiagnosticoSaved && !isEditing}
                                 className={`w-full ${errors.descripcionProblema && touched.descripcionProblema ? 'p-invalid' : ''}`}
                                 placeholder="Describe detalladamente el problema..."
                               />
@@ -307,6 +353,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                 {...field}
                                 id="magnitudLineaBase"
                                 rows={4}
+                                readOnly={hasDiagnosticoSaved && !isEditing}
                                 className={`w-full ${errors.magnitudLineaBase && touched.magnitudLineaBase ? 'p-invalid' : ''}`}
                                 placeholder="Describe la magnitud actual (línea base)..."
                               />
@@ -329,6 +376,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                         <InputTextarea
                                           {...field}
                                           rows={3}
+                                          readOnly={hasDiagnosticoSaved && !isEditing}
                                           className={`flex-1 ${(errors as any).causas?.[index] && (touched as any).causas?.[index] ? 'p-invalid' : ''}`}
                                           placeholder={`Causa ${index + 1}...`}
                                         />
@@ -339,6 +387,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                         type="button"
                                         className="p-button p-button-danger p-button-sm"
                                         onClick={() => remove(index)}
+                                        disabled={hasDiagnosticoSaved && !isEditing}
                                       >
                                         <i className="pi pi-minus"></i>
                                       </button>
@@ -349,6 +398,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                   type="button"
                                   className="p-button p-button-secondary p-button-sm mt-2"
                                   onClick={() => push('')}
+                                  disabled={hasDiagnosticoSaved && !isEditing}
                                 >
                                   <i className="pi pi-plus mr-2"></i>
                                   Agregar Causa
@@ -381,6 +431,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                 {...field}
                                 id="poblacionObjetivo"
                                 rows={4}
+                                readOnly={hasDiagnosticoSaved && !isEditing}
                                 className={`w-full ${errors.poblacionObjetivo && touched.poblacionObjetivo ? 'p-invalid' : ''}`}
                                 placeholder="Describe la población objetivo..."
                               />
@@ -399,6 +450,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                 {...field}
                                 id="descripcionResultadoEsperado"
                                 rows={6}
+                                readOnly={hasDiagnosticoSaved && !isEditing}
                                 className={`w-full ${errors.descripcionResultadoEsperado && touched.descripcionResultadoEsperado ? 'p-invalid' : ''}`}
                                 placeholder="Describe el resultado esperado..."
                               />
@@ -417,6 +469,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                 {...field}
                                 id="magnitudResultadoEsperado"
                                 rows={4}
+                                readOnly={hasDiagnosticoSaved && !isEditing}
                                 className={`w-full ${errors.magnitudResultadoEsperado && touched.magnitudResultadoEsperado ? 'p-invalid' : ''}`}
                                 placeholder="Describe la magnitud esperada..."
                               />
@@ -440,6 +493,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                         <InputTextarea
                                           {...field}
                                           rows={3}
+                                          readOnly={hasDiagnosticoSaved && !isEditing}
                                           className={`flex-1 ${(errors as any).medios?.[index] && (touched as any).medios?.[index] ? 'p-invalid' : ''}`}
                                           placeholder={`Medio ${index + 1}...`}
                                         />
@@ -450,6 +504,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                         type="button"
                                         className="p-button p-button-danger p-button-sm"
                                         onClick={() => remove(index)}
+                                        disabled={hasDiagnosticoSaved && !isEditing}
                                       >
                                         <i className="pi pi-minus"></i>
                                       </button>
@@ -460,6 +515,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                                   type="button"
                                   className="p-button p-button-secondary p-button-sm mt-2"
                                   onClick={() => push('')}
+                                  disabled={hasDiagnosticoSaved && !isEditing}
                                 >
                                   <i className="pi pi-plus mr-2"></i>
                                   Agregar Medio
@@ -476,29 +532,55 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                   </div>
                 </div>
               </Form>
-            )}
+              );
+            }}
           </Formik>
         </div>
-
-        {/* Footer del sidebar */}
         <div className="mt-auto border-top-1 surface-border p-4">
           <div className="flex gap-2">
+            {/* Botón de cancelar - siempre presente */}
             <Button
-              label="Cancelar"
+              label={hasDiagnosticoSaved && isEditing ? "Cancelar Edición" : "Cerrar"}
               icon="pi pi-times"
               outlined
               severity="secondary"
               className="flex-1"
-              onClick={onCancel}
+              onClick={hasDiagnosticoSaved && isEditing ? handleCancelEdit : onCancel}
               disabled={isSubmitting}
             />
-            <Button
-              label="Guardar"
-              icon="pi pi-check"
-              className="flex-1"
-              onClick={handleSave}
-              loading={isSubmitting}
-            />
+
+            {hasDiagnosticoSaved && !isEditing ? (
+              // Cuando existe diagnóstico y no está en edición: mostrar Editar y Enviar a Revisión
+              <>
+                <Button
+                  label="Editar"
+                  icon="pi pi-pencil"
+                  severity="info"
+                  className="flex-1"
+                  onClick={handleEdit}
+                  disabled={isSubmitting}
+                />
+                <Button
+                  label="Enviar a Revisión"
+                  icon="pi pi-send"
+                  severity="success"
+                  className="flex-1"
+                  onClick={handleSendToRevision}
+                  loading={isSubmitting}
+                  disabled={!isFormValid}
+                />
+              </>
+            ) : (
+              // Cuando no existe diagnóstico o está en modo edición: mostrar solo Guardar
+              <Button
+                label="Guardar"
+                icon="pi pi-check"
+                className="flex-1"
+                onClick={handleSave}
+                loading={isSubmitting}
+                disabled={!isFormValid}
+              />
+            )}
           </div>
         </div>
       </div>

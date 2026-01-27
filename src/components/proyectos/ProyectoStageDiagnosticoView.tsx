@@ -8,31 +8,39 @@ import { Message } from 'primereact/message';
 import { Chip } from 'primereact/chip';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { useProjectOperations } from '@/src/hooks/useProjectOperations';
-import { DiagnosticoApi } from '@/types/proyectos';
+import { DiagnosticoApi, Proyecto, EstatusEtapa } from '@/types/proyectos.d';
+import ObservacionDialog from './ObservacionDialog';
 
 interface ProyectoStageDiagnosticoViewProps {
   visible: boolean;
   onHide: () => void;
-  projectUuid: string;
+  project: Proyecto;
+  onProjectReload?: () => void;
 }
 
 const ProyectoStageDiagnosticoView: React.FC<ProyectoStageDiagnosticoViewProps> = ({
   visible,
   onHide,
-  projectUuid
+  project,
+  onProjectReload
 }) => {
   const [diagnosticoData, setDiagnosticoData] = useState<DiagnosticoApi | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showObservacionDialog, setShowObservacionDialog] = useState(false);
   const hasLoadedData = useRef(false);
 
-  const { handleGetDiagnostico } = useProjectOperations({
+  const { handleGetDiagnostico, handleAprobar, handleObservar } = useProjectOperations({
     isCreating: false,
-    selectedProject: null,
-    showSuccessMessages: false
+    selectedProject: project,
+    onSuccess: () => {
+      onProjectReload?.(); // Recargar el proyecto
+      onHide(); // Cierra el sidebar después de la acción
+    },
+    showSuccessMessages: true
   });
 
   useEffect(() => {
-    if (visible && projectUuid && !hasLoadedData.current) {
+    if (visible && project?.uuid && !hasLoadedData.current) {
       loadDiagnostico();
       hasLoadedData.current = true;
     }
@@ -40,12 +48,12 @@ const ProyectoStageDiagnosticoView: React.FC<ProyectoStageDiagnosticoViewProps> 
     if (!visible) {
       hasLoadedData.current = false;
     }
-  }, [visible, projectUuid]);
+  }, [visible, project?.uuid]);
 
   const loadDiagnostico = async () => {
     setLoading(true);
     try {
-      const data = await handleGetDiagnostico(projectUuid);
+      const data = await handleGetDiagnostico(project.uuid);
       if (data) {
         // Convertir DiagnosticoData a DiagnosticoApi (mapeo de campos)
         const apiData: DiagnosticoApi = {
@@ -67,6 +75,28 @@ const ProyectoStageDiagnosticoView: React.FC<ProyectoStageDiagnosticoViewProps> 
       setLoading(false);
     }
   };
+
+  const handleAprobarEtapa = async () => {
+    try {
+      await handleAprobar(project.uuid);
+      onHide(); // Cerrar el sidebar después de aprobar
+    } catch (error) {
+      // El error ya se maneja en el hook
+    }
+  };
+
+  const handleObservarEtapa = async (observacion: string) => {
+    try {
+      await handleObservar(project.uuid, observacion);
+      setShowObservacionDialog(false);
+      onHide(); // Cerrar el sidebar después de observar
+    } catch (error) {
+      // El error ya se maneja en el hook
+    }
+  };
+
+  // Verificar si la etapa está en revisión
+  const isEnRevision = project?.estatusEtapaActual === EstatusEtapa.EN_REVISION;
 
   const renderField = (label: string, value: string | undefined) => {
     return (
@@ -256,15 +286,42 @@ const ProyectoStageDiagnosticoView: React.FC<ProyectoStageDiagnosticoViewProps> 
         )}
 
         <div className="flex justify-content-end gap-2 pt-3 mt-auto border-top-1 surface-border">
-          <Button
-            label="Cerrar"
-            icon="pi pi-times"
-            onClick={onHide}
-            className="p-button-secondary"
-            size="small"
-          />
+          {isEnRevision ? (
+            <>
+              <Button
+                label="Observar"
+                icon="pi pi-eye"
+                severity="warning"
+                onClick={() => setShowObservacionDialog(true)}
+                size="small"
+              />
+              <Button
+                label="Aprobar"
+                icon="pi pi-check-circle"
+                severity="success"
+                onClick={handleAprobarEtapa}
+                size="small"
+              />
+            </>
+          ) : (
+            <Button
+              label="Cerrar"
+              icon="pi pi-times"
+              onClick={onHide}
+              className="p-button-secondary"
+              size="small"
+            />
+          )}
         </div>
       </div>
+
+      {/* Diálogo de observación */}
+      <ObservacionDialog
+        visible={showObservacionDialog}
+        onHide={() => setShowObservacionDialog(false)}
+        onSubmit={handleObservarEtapa}
+        isSubmitting={false}
+      />
     </Sidebar>
   );
 };

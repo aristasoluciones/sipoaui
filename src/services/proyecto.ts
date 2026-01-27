@@ -112,5 +112,22 @@ export const ProyectoService = {
     async deleteSubactividadPorActividadId(uuid:string, poaId:number, actividadId:number, subactividadId:number): Promise<void> {
         const response = await http.delete(`/api/proyectos/${uuid}/poa/${poaId}/actividades/${actividadId}/subactividades/${subactividadId}`);
         return response.data;
+    },
+
+    async solicitarRevisionPoa(uuid:string): Promise<ProgramaOperativoAnualApi> {
+        const response = await http.post(`/api/proyectos/${uuid}/workflow/solicitar-revision`);
+        return response.data;
+    },
+
+    async aprobarEtapa(uuid: string): Promise<any> {
+        const response = await http.post(`/api/proyectos/${uuid}/workflow/aprobar`);
+        return response.data;
+    },
+
+    async observarEtapa(uuid: string, observacion: string): Promise<any> {
+        const response = await http.post(`/api/proyectos/${uuid}/workflow/observar`, {
+            observacion
+        });
+        return response.data;
     }
 };

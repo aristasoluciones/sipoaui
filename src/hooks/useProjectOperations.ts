@@ -22,6 +22,9 @@ interface UseProjectOperationsReturn {
   handleSaveProject: (data: ProyectoFormData, keepWizardOpen?: boolean) => Promise<void>;
   handleSaveDiagnostico: (projectUuid: string, diagnosticoData: DiagnosticoData) => Promise<void>;
   handleGetDiagnostico: (projectUuid: string) => Promise<DiagnosticoData | null>;
+  handleSolicitarRevision: (projectUuid: string) => Promise<void>;
+  handleAprobar: (projectUuid: string) => Promise<void>;
+  handleObservar: (projectUuid: string, observacion: string) => Promise<void>;
 }
 
 export const useProjectOperations = ({
@@ -174,9 +177,72 @@ export const useProjectOperations = ({
     }
   }, [error]);
 
+  // Solicitar revisión de etapa
+  const handleSolicitarRevision = useCallback(async (projectUuid: string) => {
+    onSavingStart?.();
+    try {
+      await ProyectoService.solicitarRevisionPoa(projectUuid);
+      if (showSuccessMessages) {
+        success('Éxito', 'Revisión solicitada correctamente');
+      }
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (err) {
+      const errorMessage = formatApiError(err);
+      error('Error al solicitar revisión', errorMessage);
+      throw err;
+    } finally {
+      onSavingEnd?.();
+    }
+  }, [success, error, onSuccess, onSavingStart, onSavingEnd, showSuccessMessages]);
+
+  // Aprobar etapa
+  const handleAprobar = useCallback(async (projectUuid: string) => {
+    onSavingStart?.();
+    try {
+      await ProyectoService.aprobarEtapa(projectUuid);
+      if (showSuccessMessages) {
+        success('Éxito', 'Etapa aprobada correctamente');
+      }
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (err) {
+      const errorMessage = formatApiError(err);
+      error('Error al aprobar', errorMessage);
+      throw err;
+    } finally {
+      onSavingEnd?.();
+    }
+  }, [success, error, onSuccess, onSavingStart, onSavingEnd, showSuccessMessages]);
+
+  // Observar etapa
+  const handleObservar = useCallback(async (projectUuid: string, observacion: string) => {
+    onSavingStart?.();
+    try {
+      await ProyectoService.observarEtapa(projectUuid, observacion);
+      if (showSuccessMessages) {
+        success('Éxito', 'Observación registrada correctamente');
+      }
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (err) {
+      const errorMessage = formatApiError(err);
+      error('Error al observar', errorMessage);
+      throw err;
+    } finally {
+      onSavingEnd?.();
+    }
+  }, [success, error, onSuccess, onSavingStart, onSavingEnd, showSuccessMessages]);
+
   return {
     handleSaveProject,
     handleSaveDiagnostico,
     handleGetDiagnostico,
+    handleSolicitarRevision,
+    handleAprobar,
+    handleObservar,
   };
 };

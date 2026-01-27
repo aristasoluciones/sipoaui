@@ -8,7 +8,7 @@ import type { EjercicioFiscal, EjercicioFiscalStats } from '@/types/ejercicios';
 
 // Configuración central de mocks para toda la aplicación
 export const MOCK_CONFIG = {
-  enabled: process.env.NEXT_PUBLIC_USE_MOCKS === 'false',
+  enabled: process.env.NEXT_PUBLIC_USE_MOCKS === 'true',
   delays: {
     login: 1000,
     logout: 500,
@@ -780,6 +780,16 @@ export const MOCK_EJERCICIOS_STATS: EjercicioFiscalStats = {
   proyectosBorrador: 9,
   proyectosCancelados: 0,
   proyectosAprobados: 111
+};
+
+// Mock de POA (Programa Operativo Anual)
+export const MOCK_POA = {
+  id: 1,
+  estatus: 'EnRevision', // Cambiar a 'Aprobado' o 'Captura' para probar diferentes estados
+  proyecto: MOCK_PROYECTOS[0],
+  actividades: [],
+  created_at: '2025-01-01T00:00:00Z',
+  updated_at: '2025-01-15T00:00:00Z'
 };
 
 // Hook para verificar si los mocks están habilitados

@@ -7,15 +7,19 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { Dropdown } from 'primereact/dropdown';
 import { Calendar } from 'primereact/calendar';
 import { Badge } from 'primereact/badge';
+import { Tag } from 'primereact/tag';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Sidebar } from 'primereact/sidebar';
-import { ProgramaOperativoAnualApi, ActividadPoaApi, ActividadPoa, SubactividadPoaApi, SubactividadPoa } from '@/types/proyectos';
+import { DataView } from 'primereact/dataview';
+import { ProgramaOperativoAnualApi, ActividadPoaApi, ActividadPoa, SubactividadPoaApi, EstatusEtapa } from '@/types/proyectos.d';
 import { TipoActividad, Entregable } from '@/types/catalogos';
 import { useNotification } from '@/layout/context/notificationContext';
+import { useProjectOperations } from '@/src/hooks/useProjectOperations';
 import * as yup from 'yup';
 import { formatApiError } from '../../../utils/apiErrors';
 import { ProyectoService } from '@/src/services/proyecto';
+import ObservacionDialog from '../ObservacionDialog';
 
 // Función auxiliar para formatear fechas
 const formatDate = (date: Date): string => {
@@ -56,16 +60,23 @@ interface PoaManagerProps {
   onCreateSubactividad?: (actividadId: number, subactividadData: any) => Promise<void>;
   onUpdateSubactividad?: (actividadId: number, subactividadId: number, subactividadData: any) => Promise<void>;
   onDeleteSubactividad?: (actividadId: number, subactividadId: number) => Promise<void>;
+  readOnly?: boolean;
+  onSolicitarRevision?: () => void;
+  solicitandoRevision?: boolean;
+  isEnRevision?: boolean;
+  isAprobado?: boolean;
 }
 
 // Helper functions to convert catalog data to dropdown format
 const getTiposActividadOptions = (tiposActividad: TipoActividad[]) => {
+  if (!tiposActividad || !Array.isArray(tiposActividad)) return [];
   return tiposActividad
     .filter(item => item.estado === 'Activo')
     .map(item => ({ label: item.nombre, value: item.id.toString() }));
 };
 
 const getEntregablesOptions = (entregables: Entregable[]) => {
+  if (!entregables || !Array.isArray(entregables)) return [];
   return entregables
     .filter(item => item.estado === 'Activo')
     .map(item => ({ label: item.nombre, value: item.id.toString() }));
@@ -344,7 +355,7 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
                   setFormData(prev => ({ ...prev, tipo_actividad_id: e.value ? parseInt(e.value) : null }));
                   clearFieldError('tipo_actividad_id');
                 }}
-                options={tiposActividad.filter(t => t.estado === 'Activo').map(t => ({ label: t.nombre, value: t.id.toString() }))}
+                options={tiposActividad && Array.isArray(tiposActividad) ? tiposActividad.filter(t => t.estado === 'Activo').map(t => ({ label: t.nombre, value: t.id.toString() })) : []}
                 placeholder="Selecciona un tipo"
                 className={`w-full ${validationErrors.tipo_actividad_id ? 'p-invalid' : ''}`}
                 showClear
@@ -411,7 +422,7 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
                   setFormData(prev => ({ ...prev, entregable_id: e.value ? parseInt(e.value) : null }));
                   clearFieldError('entregable_id');
                 }}
-                options={entregables.filter(e => e.estado === 'Activo').map(e => ({ label: e.nombre, value: e.id.toString() }))}
+                options={entregables && Array.isArray(entregables) ? entregables.filter(e => e.estado === 'Activo').map(e => ({ label: e.nombre, value: e.id.toString() })) : []}
                 placeholder="Selecciona un entregable"
                 className={`w-full ${validationErrors.entregable_id ? 'p-invalid' : ''}`}
                 showClear
@@ -505,7 +516,12 @@ const PoaManager: React.FC<PoaManagerProps> = ({
   onDeleteActividad,
   onCreateSubactividad,
   onUpdateSubactividad,
-  onDeleteSubactividad
+  onDeleteSubactividad,
+  readOnly = false,
+  onSolicitarRevision,
+  solicitandoRevision = false,
+  isEnRevision = false,
+  isAprobado = false
 }) => {
   const router = useRouter();
   const { show } = useNotification();
@@ -525,6 +541,19 @@ const PoaManager: React.FC<PoaManagerProps> = ({
   const [isCreatingSubactividad, setIsCreatingSubactividad] = useState(false);
   const [selectedActividadId, setSelectedActividadId] = useState<number | null>(null);
   const [isLoadingSubactividades, setIsLoadingSubactividades] = useState<Record<number, boolean>>({});
+
+  // Estados para aprobación y observación
+  const [showObservacionDialog, setShowObservacionDialog] = useState(false);
+
+  const { handleAprobar, handleObservar } = useProjectOperations({
+    isCreating: false,
+    selectedProject: null, // No necesitamos el proyecto completo aquí
+    onSuccess: () => {
+      // Recargar datos después de aprobar/observar
+      window.location.reload(); // O implementar un callback más elegante
+    },
+    showSuccessMessages: true
+  });
 
   useEffect(() => {
     // Cargar actividades desde props
@@ -602,7 +631,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       totalSubactividades: 0
     };
 
-    setActividades(prev => [...prev, newActividad]);
+    setActividades(prev => [newActividad, ...prev]);
     setEditingRowId(tempId);
     setTempActividadText('');
     setTempTipoActividad(null);
@@ -646,7 +675,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       await onCreateActividad?.({
         descripcion: tempActividadText.trim(),
         tipo_actividad_id: parseInt(tempTipoActividad!),
-        orden: actividades.length
+        orden: 0 // Las nuevas actividades van al inicio
       });
 
       // Éxito: actualizar desde props del padre (que ahora incluye la nueva actividad)
@@ -923,6 +952,27 @@ const PoaManager: React.FC<PoaManagerProps> = ({
     }));
   };
 
+  // Handlers para aprobación y observación
+  const handleAprobarPoa = async () => {
+    try {
+      await handleAprobar(projectUuid);
+    } catch (error) {
+      // Error ya manejado en el hook
+    }
+  };
+
+  const handleObservarPoa = async (observacion: string) => {
+    try {
+      await handleObservar(projectUuid, observacion);
+      setShowObservacionDialog(false);
+    } catch (error) {
+      // Error ya manejado en el hook
+    }
+  };
+
+  // Verificar si el POA está en revisión
+  const isPoaEnRevision = poaData?.estatus === EstatusEtapa.EN_REVISION;
+
   const toggleExpand = async (actividadId: number) => {
     const actividad = actividades.find(act => act.id === actividadId);
     const willExpand = !actividad?.expandido;
@@ -1012,23 +1062,110 @@ const PoaManager: React.FC<PoaManagerProps> = ({
     return new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(date);
   };
 
+  // Función para renderizar el header del DataView con acciones y columnas
+  const renderDataViewHeader = () => (
+    <>
+      {/* Header con acciones y estado */}
+      <div className="flex flex-column md:flex-row md:justify-content-between md:align-items-center gap-3">
+        <div className="flex align-items-center gap-2 flex-wrap">
+          {isEnRevision && (
+            <Tag value="En Revisión" severity="warning" icon="pi pi-clock" />
+          )}
+          {isAprobado && (
+            <Tag value="Aprobado" severity="success" icon="pi pi-check" />
+          )}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {/* Desktop buttons */}
+          <div className="hidden md:flex gap-2">
+            {onSolicitarRevision && actividadesProp.length > 0 && !readOnly && (
+              <Button
+                label="Solicitar Revisión"
+                icon="pi pi-send"
+                onClick={onSolicitarRevision}
+                loading={solicitandoRevision}
+                className="p-button-outlined"
+              />
+            )}
+            {isPoaEnRevision && (
+              <>
+                <Button
+                  label="Observar"
+                  icon="pi pi-eye"
+                  severity="warning"
+                  onClick={() => setShowObservacionDialog(true)}
+                  className="p-button-outlined"
+                />
+                <Button
+                  label="Aprobar"
+                  icon="pi pi-check"
+                  severity="success"
+                  onClick={handleAprobarPoa}
+                />
+              </>
+            )}
+            <Button
+              label="Nueva Actividad"
+              icon="pi pi-plus"
+              size="small"
+              onClick={handleAddActividad}
+              disabled={readOnly}
+            />
+          </div>
+
+          {/* Mobile buttons - icon only */}
+          <div className="flex md:hidden gap-1">
+            {onSolicitarRevision && actividadesProp.length > 0 && !readOnly && (
+              <Button
+                icon="pi pi-send"
+                tooltip="Solicitar Revisión"
+                tooltipOptions={{ position: 'bottom' }}
+                onClick={onSolicitarRevision}
+                loading={solicitandoRevision}
+                className="p-button-outlined p-button-sm"
+              />
+            )}
+            {isPoaEnRevision && (
+              <>
+                <Button
+                  icon="pi pi-eye"
+                  tooltip="Observar"
+                  tooltipOptions={{ position: 'bottom' }}
+                  severity="warning"
+                  onClick={() => setShowObservacionDialog(true)}
+                  className="p-button-outlined p-button-sm"
+                />
+                <Button
+                  icon="pi pi-check"
+                  tooltip="Aprobar"
+                  tooltipOptions={{ position: 'bottom' }}
+                  severity="success"
+                  onClick={handleAprobarPoa}
+                  className="p-button-sm"
+                />
+              </>
+            )}
+            <Button
+              icon="pi pi-plus"
+              tooltip="Nueva Actividad"
+              tooltipOptions={{ position: 'bottom' }}
+              size="small"
+              onClick={handleAddActividad}
+              disabled={readOnly}
+              className="p-button-sm"
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <>
-      <ConfirmDialog />
-      
       {actividades.length === 0 ? (
         // Zero State cuando no hay actividades
         <>
-          <div className="flex justify-content-start mb-3">
-            <Button
-              label="Volver al Proyecto"
-              icon="pi pi-arrow-left"
-              severity="secondary"
-              outlined
-              onClick={() => router.push(`/proyectos/${projectUuid}`)}
-            />
-          </div>
-          <div className="flex flex-column align-items-center justify-content-center p-8 text-center border-2 border-dashed border-300 border-round-lg">
+          <div className="flex flex-column align-items-center justify-content-center p-2 text-center border-2 border-dashed border-300 border-round-lg bg-white">
             <i className="pi pi-list text-6xl text-primary mb-3"></i>
             <h3 className="text-xl font-semibold text-900 mb-2">No hay actividades</h3>
             <p className="text-600 mb-4">
@@ -1045,70 +1182,20 @@ const PoaManager: React.FC<PoaManagerProps> = ({
         </>
       ) : (
         // Contenido normal cuando hay actividades
-        <div className="card">
-          {/* Header estilo Monday.com */}
-          <div className="flex justify-content-between align-items-center mb-3">
-            <div>
-              <h4 className="text-lg font-semibold text-900 m-0 mb-1">Programa Operativo Anual</h4>
-              <p className="text-600 text-sm m-0">
-                {projectName && <span className="mr-3">{projectName}</span>}
-                {actividades.length} {actividades.length === 1 ? 'actividad' : 'actividades'}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                label="Volver al Proyecto"
-                icon="pi pi-arrow-left"
-                severity="secondary"
-                outlined
-                onClick={() => router.push(`/proyectos/${projectUuid}`)}
-              />
-              <Button
-                label="Nueva Actividad"
-                icon="pi pi-plus"
-                size="small"
-                onClick={handleAddActividad}
-              />
-            </div>
-          </div>
-
-          {/* Tabla estilo Monday.com */}
-          <div className="border-1 surface-border border-round overflow-hidden">
-            {/* Header de columnas - Desktop */}
-            <div className="surface-50 px-2 py-2 border-bottom-1 surface-border hidden md:flex">
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: '36px minmax(300px, 500px) minmax(140px, 200px) 1fr 60px',
-                gap: '0.5rem',
-                alignItems: 'center',
-                width: '100%'
-              }}>
-                <div></div>
-                <div className="text-600 text-sm font-semibold">Actividad / Subactividad</div>
-                <div className="text-600 text-sm font-semibold">Tipo / Entregable</div>
-                <div className="text-600 text-sm font-semibold">Periodo</div>
-                <div></div>
-              </div>
-            </div>
-
-            {/* Header de columnas - Mobile */}
-            <div className="surface-50 px-2 py-2 border-bottom-1 surface-border flex md:hidden">
-              <div className="text-600 text-sm font-semibold">Actividades y Subactividades</div>
-            </div>
-
-          {/* Filas de actividades */}
-          {actividades.length === 0 ? (
-            <div className="p-6 text-center">
-              <i className="pi pi-list text-400 mb-3" style={{ fontSize: '3rem' }}></i>
-              <p className="text-600 m-0">No hay actividades. Agregue una para comenzar.</p>
-            </div>
-          ) : (
-            <div>
-              {actividades.map((actividad, actIndex) => (
-                <div key={actividad.id}>
+        <div className="">
+          {/* DataView con Master-Detail */}
+          <DataView
+            value={actividades}
+            layout="list"
+            paginator
+            rows={10}
+            itemTemplate={(actividad) => {
+              const actIndex = actividades.indexOf(actividad);
+              return (
+                <div key={actividad.id} style={{ width: '100%' }}>
                   {/* Fila de Actividad - Desktop */}
                   <div 
-                    className="px-2 py-2 border-bottom-1 surface-border hover:surface-100 transition-colors transition-duration-150 hidden md:block"
+                    className="px-2 py-1 hover:surface-100 transition-colors transition-duration-150 hidden md:block"
                     style={{ backgroundColor: actIndex % 2 === 0 ? 'var(--surface-0)' : 'var(--surface-50)' }}
                   >
                     <div style={{ 
@@ -1218,6 +1305,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                               tooltipOptions={{ position: 'top' }}
                               onClick={() => startRowEditing(actividad.id)}
                               style={{ width: '1.75rem', height: '1.75rem' }}
+                              disabled={readOnly}
                             />
                             <Button
                               icon="pi pi-plus"
@@ -1226,6 +1314,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                               tooltipOptions={{ position: 'top' }}
                               onClick={() => handleAddSubactividad(actividad.id)}
                               style={{ width: '1.75rem', height: '1.75rem' }}
+                              disabled={readOnly}
                             />
                             <Button
                               icon="pi pi-trash"
@@ -1234,6 +1323,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                               tooltipOptions={{ position: 'top' }}
                               onClick={() => handleDeleteActividad(actividad.id)}
                               style={{ width: '1.75rem', height: '1.75rem' }}
+                              disabled={readOnly}
                             />
                           </>
                         )}
@@ -1294,6 +1384,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                                 tooltipOptions={{ position: 'top' }}
                                 onClick={() => startRowEditing(actividad.id)}
                                 style={{ width: '1.75rem', height: '1.75rem' }}
+                                disabled={readOnly}
                               />
                               <Button
                                 icon="pi pi-plus"
@@ -1302,6 +1393,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                                 tooltipOptions={{ position: 'top' }}
                                 onClick={() => handleAddSubactividad(actividad.id)}
                                 style={{ width: '1.75rem', height: '1.75rem' }}
+                                disabled={readOnly}
                               />
                               <Button
                                 icon="pi pi-trash"
@@ -1310,6 +1402,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                                 tooltipOptions={{ position: 'top' }}
                                 onClick={() => handleDeleteActividad(actividad.id)}
                                 style={{ width: '1.75rem', height: '1.75rem' }}
+                                disabled={readOnly}
                               />
                             </>
                           )}
@@ -1378,12 +1471,31 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                             <h6 className="text-sm font-semibold text-900 m-0">Subactividades</h6>
                             {isLoadingSubactividades[actividad.id] && <ProgressSpinner style={{ width: '20px', height: '20px' }} />}
                           </div>
-                          <Button
-                            label="Nueva Subactividad"
-                            icon="pi pi-plus"
-                            size="small"
-                            onClick={() => handleAddSubactividad(actividad.id)}
-                          />
+                          <div className="flex gap-2">
+                            {/* Desktop button */}
+                            <div className="hidden md:block">
+                              <Button
+                                label="Nueva Subactividad"
+                                icon="pi pi-plus"
+                                size="small"
+                                onClick={() => handleAddSubactividad(actividad.id)}
+                                disabled={readOnly}
+                              />
+                            </div>
+                            
+                            {/* Mobile button */}
+                            <div className="block md:hidden">
+                              <Button
+                                icon="pi pi-plus"
+                                tooltip="Nueva Subactividad"
+                                tooltipOptions={{ position: 'bottom' }}
+                                size="small"
+                                onClick={() => handleAddSubactividad(actividad.id)}
+                                disabled={readOnly}
+                                className="p-button-sm"
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -1396,7 +1508,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                             <small className="text-500">Haz click en &quot;Nueva Subactividad&quot; para agregar una</small>
                           </div>
                         ) : (
-                          actividad.subactividades.map((subactividad, subIndex) => (
+                          actividad.subactividades.map((subactividad: SubactividadPoaApi, subIndex: number) => (
                             <div 
                               key={subactividad.id}
                               className="px-3 py-3 border-bottom-1 surface-border hover:surface-50 transition-colors transition-duration-150"
@@ -1446,6 +1558,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                                     tooltip="Editar subactividad"
                                     tooltipOptions={{ position: 'top' }}
                                     onClick={() => handleEditSubactividad(subactividad)}
+                                    disabled={readOnly}
                                   />
                                   <Button
                                     icon="pi pi-trash"
@@ -1453,6 +1566,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                                     tooltip="Eliminar subactividad"
                                     tooltipOptions={{ position: 'top' }}
                                     onClick={() => handleDeleteSubactividadApi(subactividad.id)}
+                                    disabled={readOnly}
                                   />
                                 </div>
                               </div>
@@ -1463,18 +1577,16 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            }}
+            emptyMessage="No hay actividades. Agregue una para comenzar."
+            className="border-1 surface-border border-round overflow-hidden"
+            pt={{
+              content: { className: 'p-0' }
+            }}
+            header={renderDataViewHeader()}
+          />
         </div>
-
-        {/* Footer con resumen */}
-        <div className="mt-3 flex justify-content-between align-items-center">
-          <span className="text-600 text-sm">
-            Total: {actividades.reduce((sum, act) => sum + act.subactividades.length, 0)} subactividades
-          </span>
-        </div>
-      </div>
       )}
       
       {/* Sidebar integrado para edición de subactividades */}
@@ -1489,6 +1601,13 @@ const PoaManager: React.FC<PoaManagerProps> = ({
         actividadId={selectedActividadId}
         poaId={poaData?.id || null}
         projectUuid={projectUuid}
+      />
+      
+      {/* Dialog para observaciones */}
+      <ObservacionDialog
+        visible={showObservacionDialog}
+        onHide={() => setShowObservacionDialog(false)}
+        onSubmit={handleObservarPoa}
       />
     </>
   );

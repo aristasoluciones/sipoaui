@@ -7,10 +7,11 @@ import { Button } from 'primereact/button';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { PageAccessDenied } from '@/src/components/AccessDeneid';
 import { usePermissions } from '@/src/hooks/usePermissions';
-import { ProjectWizardDialog } from '@/src/components/proyectos';
+import ProyectoWizard from '@/src/components/proyectos/ProyectoWizard';
 import { ProyectoService } from '@/src/services/proyecto';
 import { Proyecto, ProyectoApi } from '@/types/proyectos';
 import { toCamelCase } from '@/src/utils/transformers';
+import { proyectoInformacionGeneralSchema } from '@/src/schemas/proyecto.schemas';
 
 const ProjectDetailPage: React.FC = () => {
   const router = useRouter();
@@ -24,27 +25,35 @@ const ProjectDetailPage: React.FC = () => {
   const lastLoadedUuidRef = React.useRef<string | null>(null);
 
   // Cargar proyecto
+  const loadProject = async () => {
+    lastLoadedUuidRef.current = uuid;
+    setLoading(true);
+    try {
+      const projectApi = await ProyectoService.getProyecto(uuid);
+      const projectData = toCamelCase(projectApi) as Proyecto;
+      setProject(projectData);
+      setNotFound(false);
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        setNotFound(true);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para recargar el proyecto
+  const reloadProject = async () => {
+    if (uuid) {
+      await loadProject();
+    }
+  };
+
+  // Cargar proyecto al montar
   useEffect(() => {
     // Evitar múltiples cargas (por ejemplo React Strict Mode en desarrollo)
     if (!uuid) return;
     if (lastLoadedUuidRef.current === uuid) return;
-
-    const loadProject = async () => {
-      lastLoadedUuidRef.current = uuid;
-      setLoading(true);
-      try {
-        const projectApi = await ProyectoService.getProyecto(uuid);
-        const projectData = toCamelCase(projectApi) as Proyecto;
-        setProject(projectData);
-        setNotFound(false);
-      } catch (error: any) {
-        if (error?.response?.status === 404) {
-          setNotFound(true);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
 
     loadProject();
 
@@ -143,18 +152,45 @@ const ProjectDetailPage: React.FC = () => {
           <BreadCrumb
             model={breadcrumbItems}
             home={breadcrumbHome}
-            className="mb-4"
+            className="mb-2"
           />
+        </div>
+      </div>
+
+      {/* Toolbar del proyecto */}
+      <div className="grid">
+        <div className="col-12">
+          <div className="p-3 border-1 surface-border border-round-lg bg-white mb-2">
+            <div className="flex justify-content-between align-items-start mb-3">
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-900 m-0">
+                  Proyecto: {project.nombre}
+                </h2>
+                <p className="text-sm text-600 m-0 mt-1">
+                  {project.descripcion || 'Sin descripción disponible'}
+                </p>
+              </div>
+
+              <div className="ml-3">
+                <Button
+                  label="Regresar al listado"
+                  icon="pi pi-arrow-left"
+                  severity="secondary"
+                  outlined
+                  onClick={() => router.push('/proyectos')}
+                  className="h-3rem"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="grid">
         <div className="col-12">
-          <ProjectWizardDialog
-            visible={true}
+          <ProyectoWizard
             project={project}
             isCreating={false}
-            isEjercicioFiscalCerrado={false}
             onCancel={() => router.push('/proyectos')}
             onSuccess={() => {}}
             onCloseWizard={() => router.push('/proyectos')}
@@ -163,6 +199,7 @@ const ProjectDetailPage: React.FC = () => {
               const savedProject = toCamelCase(savedProjectApi) as Proyecto;
               setProject(savedProject);
             }}
+            onProjectReload={reloadProject}
             selectedEjercicioFiscal={project.ejercicioId}
           />
         </div>

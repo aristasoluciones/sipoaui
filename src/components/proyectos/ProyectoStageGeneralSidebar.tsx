@@ -6,21 +6,10 @@ import { InputText } from 'primereact/inputtext';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { Dropdown } from 'primereact/dropdown';
 import { Sidebar } from 'primereact/sidebar';
-import { CatalogoService } from '@/src/services/catalogos.service';
 import type { ProyectoFormData } from '@/types/proyectos';
 import { Prioridad } from '@/types/proyectos.d';
 import { proyectoInformacionGeneralSchema } from '@/src/schemas/proyecto.schemas';
 import { useNotification } from '@/layout/context/notificationContext';
-
-interface Empleado {
-  id: number;
-  nombre: string;
-}
-
-interface TipoProyecto {
-  id: number;
-  nombre: string;
-}
 
 interface Stage {
   id: number;
@@ -39,6 +28,9 @@ interface ProyectoStageGeneralSidebarProps {
   onInputChange: (field: keyof ProyectoFormData, value: any) => void;
   onSave: () => void;
   onCancel: () => void;
+  unidades?: any[];
+  empleados?: any[];
+  tiposProyecto?: any[];
 }
 
 const ProyectoStageGeneralSidebar: React.FC<ProyectoStageGeneralSidebarProps> = ({
@@ -48,14 +40,11 @@ const ProyectoStageGeneralSidebar: React.FC<ProyectoStageGeneralSidebarProps> = 
   formData,
   onInputChange,
   onSave,
-  onCancel
+  onCancel,
+  unidades = [],
+  empleados = [],
+  tiposProyecto = []
 }) => {
-  // Estados para datos dinámicos
-  const [unidades, setUnidades] = useState<any[]>([]);
-  const [empleados, setEmpleados] = useState<Empleado[]>([]);
-  const [tiposProyecto, setTiposProyecto] = useState<TipoProyecto[]>([]);
-  const [loadingCatalogos, setLoadingCatalogos] = useState(false);
-
   // Estado para errores de validación
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
@@ -125,28 +114,6 @@ const ProyectoStageGeneralSidebar: React.FC<ProyectoStageGeneralSidebarProps> = 
     validateField(field, value);
   };
 
-  // Mock data para empleados
-  const mockEmpleados: Empleado[] = [
-    { id: 1, nombre: 'Juan Pérez García' },
-    { id: 2, nombre: 'María González López' },
-    { id: 3, nombre: 'Carlos Rodríguez Martínez' },
-    { id: 4, nombre: 'Ana Sánchez Hernández' },
-    { id: 5, nombre: 'Luis Fernández Díaz' },
-    { id: 6, nombre: 'Carmen Jiménez Ruiz' },
-    { id: 7, nombre: 'Miguel Álvarez Moreno' },
-    { id: 8, nombre: 'Isabel Romero Navarro' },
-    { id: 9, nombre: 'David Torres Ortega' },
-    { id: 10, nombre: 'Laura Ramírez Delgado' }
-  ];
-
-  // Mock data para tipos de proyecto
-  const mockTiposProyecto: TipoProyecto[] = [
-    { id: 1, nombre: 'Interno de la Institución' },
-    { id: 2, nombre: 'Externos de la Institución' },
-    { id: 3, nombre: 'Microproyectos internos' },
-    { id: 4, nombre: 'Microproyectos externos' },
-  ];
-
   // Opciones para prioridad usando el enum
   const prioridadOptions = [
     { label: 'Crítica', value: Prioridad.CRITICA },
@@ -157,27 +124,7 @@ const ProyectoStageGeneralSidebar: React.FC<ProyectoStageGeneralSidebarProps> = 
 
   // Cargar datos de catálogos
   useEffect(() => {
-    const loadCatalogos = async () => {
-      setLoadingCatalogos(true);
-      try {
-        // Cargar unidades desde catálogo
-        const unidadesService = new CatalogoService('unidades');
-        const unidades = await unidadesService.getAll();
-        setUnidades(unidades|| []);
-
-        // Usar mocks para empleados y tipos de proyecto
-        setEmpleados(mockEmpleados);
-        setTiposProyecto(mockTiposProyecto);
-      } catch (err) {
-        console.error('Error cargando catálogos:', err);
-        error('Error al cargar datos', 'No se pudieron cargar los catálogos. Intente nuevamente.');
-      } finally {
-        setLoadingCatalogos(false);
-      }
-    };
-
     if (visible) {
-      loadCatalogos();
       // Validar formulario inicial
       validateCompleteForm();
     }
@@ -264,12 +211,11 @@ const ProyectoStageGeneralSidebar: React.FC<ProyectoStageGeneralSidebarProps> = 
               filter
               filterBy='label'
               value={formData.unidad_id}
-              options={unidades.map(u => ({ label: u.nombre, value: u.id }))}
+              options={unidades && Array.isArray(unidades) ? unidades.map(u => ({ label: u.nombre, value: u.id })) : []}
               onChange={(e) => handleInputChange('unidad_id', e.value)}
               className={`w-full ${validationErrors.unidad_id ? 'p-invalid' : ''}`}
               placeholder="Seleccione la unidad responsable"
               showClear
-              disabled={loadingCatalogos}
             />
             {validationErrors.unidad_id && (
               <small className="p-error">{validationErrors.unidad_id}</small>
@@ -285,7 +231,7 @@ const ProyectoStageGeneralSidebar: React.FC<ProyectoStageGeneralSidebarProps> = 
               filterBy='label'
               id="responsable_id"
               value={formData.responsable_id}
-              options={empleados.map(e => ({ label: e.nombre, value: e.id }))}
+              options={empleados && Array.isArray(empleados) ? empleados.map(e => ({ label: e.nombre, value: e.id })) : []}
               onChange={(e) => handleInputChange('responsable_id', e.value)}
               className={`w-full ${validationErrors.responsable_id ? 'p-invalid' : ''}`}
               placeholder="Seleccione el responsable del proyecto"
@@ -303,7 +249,7 @@ const ProyectoStageGeneralSidebar: React.FC<ProyectoStageGeneralSidebarProps> = 
             <Dropdown
               id="tipo_proyecto_id"
               value={formData.tipo_proyecto_id}
-              options={tiposProyecto.map(t => ({ label: t.nombre, value: t.id }))}
+              options={tiposProyecto && Array.isArray(tiposProyecto) ? tiposProyecto.map(t => ({ label: t.nombre, value: t.id })) : []}
               onChange={(e) => handleInputChange('tipo_proyecto_id', e.value)}
               className={`w-full ${validationErrors.tipo_proyecto_id ? 'p-invalid' : ''}`}
               placeholder="Seleccione el tipo de proyecto"

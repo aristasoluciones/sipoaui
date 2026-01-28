@@ -19,6 +19,7 @@ interface ProyectoStageDiagnosticoSidebarProps {
   project: Proyecto;
   onCancel: () => void;
   onProjectReload?: () => void;
+  onProjectUpdate?: (updatedProject: Partial<Proyecto>) => void;
 }
 
 const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarProps> = ({
@@ -27,7 +28,8 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
   stage,
   project,
   onCancel,
-  onProjectReload
+  onProjectReload,
+  onProjectUpdate
 }) => {
   // Valores iniciales por defecto
   const defaultInitialValues: DiagnosticoData = {
@@ -55,7 +57,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
   const [observacionViewerVisible, setObservacionViewerVisible] = useState(false);
 
   // Usar el hook centralizado de operaciones
-  const { handleSaveDiagnostico, handleGetDiagnostico, handleSolicitarRevision } = useProjectOperations({
+  const { handleSaveDiagnostico, handleGetDiagnostico, handleSolicitarRevision, handleResolverObservaciones, handleGetObservacionesPendientes } = useProjectOperations({
     isCreating: false,
     selectedProject: project,
     onSuccess: () => {
@@ -191,10 +193,15 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
     }];
   };
 
-  const handleGuardarObservaciones = (observacionesActualizadas: Observacion[]) => {
-    // Aquí se implementará la lógica para guardar los cambios en el futuro
-    console.log('Observaciones actualizadas:', observacionesActualizadas);
-    // TODO: Llamar a API para actualizar el estado de las observaciones
+  const handleGuardarObservaciones = async (observacionesActualizadas: Observacion[]) => {
+    // Resolver todas las observaciones pendientes
+    try {
+      await handleResolverObservaciones(project.uuid);
+      // Después de resolver, recargar el proyecto para actualizar el estado
+      onProjectReload?.();
+    } catch (error) {
+      // El error ya se maneja en el hook
+    }
   };
 
   const handleViewObservation = () => {
@@ -591,7 +598,7 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
               />
 
               {hasDiagnosticoSaved && !isEditing ? (
-                // Cuando existe diagnóstico y no está en edición: mostrar Editar y Enviar a Revisión
+                // Cuando existe diagnóstico y no está en edición: mostrar Editar y Enviar a Revisión (solo si no está observado)
                 <>
                   <Button
                     label="Editar"
@@ -601,15 +608,17 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                     onClick={handleEdit}
                     disabled={isSubmitting}
                   />
-                  <Button
-                    label="Enviar a Revisión"
-                    icon="pi pi-send"
-                    severity="success"
-                    className="w-full md:w-auto"
-                    onClick={handleSendToRevision}
-                    loading={isSubmitting}
-                    disabled={!isFormValid}
-                  />
+                  {!isStageObserved() && (
+                    <Button
+                      label="Enviar a Revisión"
+                      icon="pi pi-send"
+                      severity="success"
+                      className="w-full md:w-auto"
+                      onClick={handleSendToRevision}
+                      loading={isSubmitting}
+                      disabled={!isFormValid}
+                    />
+                  )}
                 </>
               ) : (
                 // Cuando no existe diagnóstico o está en modo edición: mostrar solo Guardar
@@ -634,6 +643,8 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
         observaciones={getStageObservation()}
         titulo={`Observaciones - ${stage.title}`}
         onGuardarCambios={handleGuardarObservaciones}
+        projectUuid={project.uuid}
+        onGetObservaciones={handleGetObservacionesPendientes}
       />
     </Sidebar>
   );

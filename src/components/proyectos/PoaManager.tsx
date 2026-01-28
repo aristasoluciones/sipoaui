@@ -8,44 +8,19 @@ import { Dropdown } from 'primereact/dropdown';
 import { Calendar } from 'primereact/calendar';
 import { Badge } from 'primereact/badge';
 import { Tag } from 'primereact/tag';
-import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
+import { confirmDialog } from 'primereact/confirmdialog';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { Sidebar } from 'primereact/sidebar';
 import { DataView } from 'primereact/dataview';
-import { ProgramaOperativoAnualApi, ActividadPoaApi, ActividadPoa, SubactividadPoaApi, EstatusEtapa } from '@/types/proyectos.d';
+import { ProgramaOperativoAnualApi, ActividadPoaApi, ActividadUI, SubactividadPoaApi, EstatusEtapa, Observacion } from '@/types/proyectos.d';
 import { TipoActividad, Entregable } from '@/types/catalogos';
 import { useNotification } from '@/layout/context/notificationContext';
 import { useProjectOperations } from '@/src/hooks/useProjectOperations';
-import * as yup from 'yup';
+import { actividadSchema, subactividadSchema } from '@/src/schemas/proyecto.schemas';
 import { formatApiError } from '../../utils/apiErrors';
 import { ProyectoService } from '@/src/services/proyecto';
 import ObservacionDialog from './ObservacionDialog';
-
-// Función auxiliar para formatear fechas
-const formatDate = (date: Date): string => {
-  return date.toLocaleDateString('es-ES', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
-};
-
-interface Subactividad {
-  id: string;
-  subactividad: string;
-  fechaInicio: Date | null;
-  fechaTermino: Date | null;
-  entregable: string | null;
-  mesesContemplados: string[]; // Formato: ['2025-01', '2025-02', etc.]
-}
-
-// Interfaz para la UI que combina ActividadPoa con campos adicionales para la interfaz
-interface ActividadUI extends Omit<ActividadPoa, 'tipoActividad'> {
-  tipoActividad?: TipoActividad;
-  subactividades: SubactividadPoaApi[];
-  expandido: boolean;
-  totalSubactividades: number;
-}
+import ObservacionViewer from './ObservacionViewer';
 
 interface PoaManagerProps {
   projectUuid: string;
@@ -65,6 +40,8 @@ interface PoaManagerProps {
   solicitandoRevision?: boolean;
   isEnRevision?: boolean;
   isAprobado?: boolean;
+  isObservado?: boolean;
+  onReloadPoa?: () => Promise<void>;
 }
 
 // Helper functions to convert catalog data to dropdown format
@@ -74,55 +51,6 @@ const getTiposActividadOptions = (tiposActividad: TipoActividad[]) => {
     .filter(item => item.estado === 'Activo')
     .map(item => ({ label: item.nombre, value: item.id.toString() }));
 };
-
-const getEntregablesOptions = (entregables: Entregable[]) => {
-  if (!entregables || !Array.isArray(entregables)) return [];
-  return entregables
-    .filter(item => item.estado === 'Activo')
-    .map(item => ({ label: item.nombre, value: item.id.toString() }));
-};
-
-// Esquema de validación para actividad
-const actividadSchema = yup.object().shape({
-  descripcion: yup
-    .string()
-    .required('La descripción de la actividad es obligatoria')
-    .min(3, 'La descripción debe tener al menos 3 caracteres')
-    .max(500, 'La descripción no puede exceder 500 caracteres'),
-  tipo_actividad_id: yup
-    .number()
-    .integer('El tipo de actividad debe ser un número entero')
-    .required('El tipo de actividad es obligatorio')
-    .positive('El tipo de actividad debe ser un número positivo')
-});
-
-// Esquema de validación para subactividad
-const subactividadSchema = yup.object().shape({
-  descripcion: yup
-    .string()
-    .required('La descripción de la subactividad es obligatoria')
-    .min(3, 'La descripción debe tener al menos 3 caracteres')
-    .max(500, 'La descripción no puede exceder 500 caracteres'),
-  tipo_actividad_id: yup
-    .number()
-    .integer('El tipo de actividad debe ser un número entero')
-    .required('El tipo de actividad es obligatorio')
-    .positive('El tipo de actividad debe ser un número positivo'),
-  fecha_inicio: yup
-    .date()
-    .required('La fecha de inicio es obligatoria')
-    .typeError('La fecha de inicio debe ser una fecha válida'),
-  fecha_termino: yup
-    .date()
-    .required('La fecha de término es obligatoria')
-    .typeError('La fecha de término debe ser una fecha válida')
-    .min(yup.ref('fecha_inicio'), 'La fecha de término debe ser posterior a la fecha de inicio'),
-  entregable_id: yup
-    .number()
-    .integer('El entregable debe ser un número entero')
-    .required('El entregable es obligatorio')
-    .positive('El entregable debe ser un número positivo')
-});
 
 // Componente integrado para el sidebar de subactividad
 interface SubactividadSidebarProps {
@@ -521,7 +449,9 @@ const PoaManager: React.FC<PoaManagerProps> = ({
   onSolicitarRevision,
   solicitandoRevision = false,
   isEnRevision = false,
-  isAprobado = false
+  isAprobado = false,
+  isObservado = false,
+  onReloadPoa
 }) => {
   const router = useRouter();
   const { show } = useNotification();
@@ -544,13 +474,16 @@ const PoaManager: React.FC<PoaManagerProps> = ({
 
   // Estados para aprobación y observación
   const [showObservacionDialog, setShowObservacionDialog] = useState(false);
+  const [observacionesViewerVisible, setObservacionesViewerVisible] = useState(false);
 
-  const { handleAprobar, handleObservar } = useProjectOperations({
+  const { handleAprobar, handleObservar, handleGetObservacionesPendientes, handleResolverObservaciones } = useProjectOperations({
     isCreating: false,
     selectedProject: null, // No necesitamos el proyecto completo aquí
-    onSuccess: () => {
-      // Recargar datos después de aprobar/observar
-      window.location.reload(); // O implementar un callback más elegante
+    onSuccess: async () => {
+      // Recargar POA después de aprobar/observar
+      if (onReloadPoa) {
+        await onReloadPoa();
+      }
     },
     showSuccessMessages: true
   });
@@ -864,29 +797,6 @@ const PoaManager: React.FC<PoaManagerProps> = ({
     });
   };
 
-  const handleDeleteSubactividad = (actividadId: number, subactividadId: number) => {
-    confirmDialog({
-      message: '¿Está seguro de eliminar esta subactividad?',
-      header: 'Confirmar eliminación',
-      icon: 'pi pi-exclamation-triangle',
-      acceptLabel: 'Sí, eliminar',
-      rejectLabel: 'Cancelar',
-      acceptClassName: 'p-button-danger',
-      accept: () => {
-        setActividades(prev => prev.map(act => {
-          if (act.id === actividadId) {
-            return {
-              ...act,
-              subactividades: act.subactividades.filter(sub => sub.id !== subactividadId)
-            };
-          }
-          return act;
-        }));
-        show({ severity: 'success', summary: 'Eliminado', detail: 'Subactividad eliminada' });
-      }
-    });
-  };
-
   const updateActividadField = (actividadId: number, field: keyof ActividadUI, value: any) => {
     setActividades(prev => prev.map(act => 
       act.id === actividadId ? { ...act, [field]: value } : act
@@ -967,6 +877,23 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       setShowObservacionDialog(false);
     } catch (error) {
       // Error ya manejado en el hook
+    }
+  };
+
+  const handleGuardarObservaciones = async (observacionesActualizadas: Observacion[]) => {
+    const todasResueltas = observacionesActualizadas.every(obs => obs.resuelta);
+    
+    if (todasResueltas) {
+      try {
+        await handleResolverObservaciones(projectUuid);
+        setObservacionesViewerVisible(false);
+        // Recargar POA sin recargar la página
+        if (onReloadPoa) {
+          await onReloadPoa();
+        }
+      } catch (error) {
+        // El error ya se maneja en el hook
+      }
     }
   };
 
@@ -1074,11 +1001,23 @@ const PoaManager: React.FC<PoaManagerProps> = ({
           {isAprobado && (
             <Tag value="Aprobado" severity="success" icon="pi pi-check" />
           )}
+          {isObservado && (
+            <Tag value="Observado" severity="danger" icon="pi pi-exclamation-triangle" />
+          )}
         </div>
         <div className="flex gap-2 flex-wrap">
           {/* Desktop buttons */}
           <div className="hidden md:flex gap-2">
-            {onSolicitarRevision && actividadesProp.length > 0 && !readOnly && (
+            {isObservado && (
+              <Button
+                label="Ver Observaciones"
+                icon="pi pi-exclamation-triangle"
+                severity="warning"
+                onClick={() => setObservacionesViewerVisible(true)}
+                className="p-button-outlined"
+              />
+            )}
+            {onSolicitarRevision && actividadesProp.length > 0 && !readOnly && !isObservado && (
               <Button
                 label="Solicitar Revisión"
                 icon="pi pi-send"
@@ -1608,6 +1547,17 @@ const PoaManager: React.FC<PoaManagerProps> = ({
         visible={showObservacionDialog}
         onHide={() => setShowObservacionDialog(false)}
         onSubmit={handleObservarPoa}
+      />
+
+      {/* Viewer para observaciones */}
+      <ObservacionViewer
+        visible={observacionesViewerVisible}
+        onHide={() => setObservacionesViewerVisible(false)}
+        observaciones={[]}
+        titulo="Observaciones - Programa Operativo Anual"
+        onGuardarCambios={handleGuardarObservaciones}
+        projectUuid={projectUuid}
+        onGetObservaciones={handleGetObservacionesPendientes}
       />
     </>
   );

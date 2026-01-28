@@ -129,5 +129,15 @@ export const ProyectoService = {
             observacion
         });
         return response.data;
+    },
+
+    async getObservacionesPendientes(uuid: string): Promise<any[]> {
+        const response = await http.get(`/api/proyectos/${uuid}/workflow/observaciones-pendientes`);
+        return response.data;
+    },
+
+    async resolverObservaciones(uuid: string): Promise<any> {
+        const response = await http.post(`/api/proyectos/${uuid}/workflow/resolver-observaciones`);
+        return response.data;
     }
 };

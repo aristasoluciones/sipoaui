@@ -25,6 +25,8 @@ interface UseProjectOperationsReturn {
   handleSolicitarRevision: (projectUuid: string) => Promise<void>;
   handleAprobar: (projectUuid: string) => Promise<void>;
   handleObservar: (projectUuid: string, observacion: string) => Promise<void>;
+  handleResolverObservaciones: (projectUuid: string) => Promise<void>;
+  handleGetObservacionesPendientes: (projectUuid: string) => Promise<any[]>;
 }
 
 export const useProjectOperations = ({
@@ -237,6 +239,38 @@ export const useProjectOperations = ({
     }
   }, [success, error, onSuccess, onSavingStart, onSavingEnd, showSuccessMessages]);
 
+  // Resolver observaciones (cambiar estado de observado a captura o en_revision)
+  const handleResolverObservaciones = useCallback(async (projectUuid: string) => {
+    onSavingStart?.();
+    try {
+      await ProyectoService.resolverObservaciones(projectUuid);
+      if (showSuccessMessages) {
+        success('Éxito', 'Observaciones resueltas correctamente');
+      }
+      if (onSuccess) {
+        onSuccess();
+      }
+    } catch (err) {
+      const errorMessage = formatApiError(err);
+      error('Error al resolver observaciones', errorMessage);
+      throw err;
+    } finally {
+      onSavingEnd?.();
+    }
+  }, [success, error, onSuccess, onSavingStart, onSavingEnd, showSuccessMessages]);
+
+  // Obtener observaciones pendientes
+  const handleGetObservacionesPendientes = useCallback(async (projectUuid: string): Promise<any[]> => {
+    try {
+      const response = await ProyectoService.getObservacionesPendientes(projectUuid);
+      return response;
+    } catch (err) {
+      const errorMessage = formatApiError(err);
+      error('Error al cargar observaciones', errorMessage);
+      throw err;
+    }
+  }, [error]);
+
   return {
     handleSaveProject,
     handleSaveDiagnostico,
@@ -244,5 +278,7 @@ export const useProjectOperations = ({
     handleSolicitarRevision,
     handleAprobar,
     handleObservar,
+    handleResolverObservaciones,
+    handleGetObservacionesPendientes,
   };
 };

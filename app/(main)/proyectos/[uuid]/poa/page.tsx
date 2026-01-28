@@ -226,6 +226,14 @@ const PoaPage: React.FC = () => {
     }
   };
 
+  const handleReloadPoa = async () => {
+    try {
+      await loadPoa();
+    } catch (error: any) {
+      console.error('Error reloading POA:', error);
+    }
+  };
+
   const handleSolicitarRevision = () => {
     confirmDialog({
       message: '¿Está seguro que desea enviar el POA a revisión? Una vez enviado, no podrá realizar cambios hasta que sea aprobado u observado.',
@@ -280,6 +288,7 @@ const PoaPage: React.FC = () => {
 
   const isEnRevision = poa?.estatus === EstatusEtapa.EN_REVISION;
   const isAprobado = poa?.estatus === EstatusEtapa.APROBADO;
+  const isObservado = poa?.estatus === EstatusEtapa.OBSERVADO;
   const puedeEditarPoa = !isEnRevision && !isAprobado;
 
   return (
@@ -362,6 +371,8 @@ const PoaPage: React.FC = () => {
               solicitandoRevision={solicitandoRevision}
               isEnRevision={isEnRevision}
               isAprobado={isAprobado}
+              isObservado={isObservado}
+              onReloadPoa={handleReloadPoa}
             />
           </>
         ) : (

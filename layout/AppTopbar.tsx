@@ -58,12 +58,22 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                 <i className="pi pi-bars" />
             </button>
 
-            <button ref={topbarmenubuttonRef} type="button" className="p-link layout-topbar-menu-button layout-topbar-button" onClick={showProfileSidebar}>
+            <button 
+                ref={topbarmenubuttonRef} 
+                type="button" 
+                className={classNames('p-link layout-topbar-menu-button layout-topbar-button', { 'menu-active': userMenuVisible })} 
+                onClick={() => {
+                    setUserMenuVisible(!userMenuVisible);
+                }}
+            >
                 <i className="pi pi-ellipsis-v" />
             </button>
 
-            <div ref={topbarmenuRef} className={classNames('layout-topbar-menu', { 'layout-topbar-menu-mobile-active': layoutState.profileSidebarVisible })}>
-                <div className="user-menu-container" ref={userMenuRef}>
+            <div ref={topbarmenuRef} className={classNames('layout-topbar-menu', { 'layout-topbar-menu-mobile-active': userMenuVisible })}>
+                <div 
+                    className="user-menu-container" 
+                    ref={userMenuRef}
+                >
                     <button 
                         type="button" 
                         onClick={() => setUserMenuVisible(!userMenuVisible)}
@@ -74,7 +84,7 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                         </div>
                         <div className="user-info">
                             <span className="user-name">{user?.name || 'Usuario'}</span>
-                            <span className="user-role">Administrador</span>
+                            <span className="user-role mt-1">{user?.rolesTitle?.[0] || ''}</span>
                         </div>
                         <i className={`pi ${userMenuVisible ? 'pi-chevron-up' : 'pi-chevron-down'} user-chevron`}></i>
                     </button>
@@ -90,6 +100,8 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                                     <div className="user-details">
                                         <h4>{user?.name || 'Usuario'}</h4>
                                         <p>{user?.email || 'usuario@ejemplo.com'}</p>
+                                        <p className='font-medium'>{user?.unidad || 'Sin Adscripción'}</p>
+                                        <p>{user?.rolesTitle?.[0] || ''}</p>
                                     </div>
                                 </div>
                                 {/*

@@ -15,10 +15,9 @@ import { classNames } from 'primereact/utils';
 const LoginPage = () => {
     const [password, setPassword] = useState('');
     const [email, setEmail] = useState('');
-    const [checked, setChecked] = useState(false);
     const { layoutConfig } = useContext(LayoutContext);
     const { login, loading, isAuthenticated } = useAuth();
-    const { success, error } = useNotification();
+    const { error } = useNotification();
     const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
 
@@ -29,9 +28,7 @@ const LoginPage = () => {
         const newErrors: { email?: string; password?: string } = {};
         if (!email) {
             newErrors.email = 'El correo es obligatorio';
-        } /*else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            newErrors.email = 'El correo no es válido';
-        }*/
+        } 
         
         if (!password) {
             newErrors.password = 'La contraseña es obligatoria';

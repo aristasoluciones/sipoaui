@@ -47,6 +47,9 @@ export interface Observacion {
   texto: string;
   resuelta: boolean;
   fechaCreacion: string;
+  etapa?: string;
+  observado_por?: string;
+  estatus?: string;
 }
 
 interface Unidad {
@@ -251,6 +254,14 @@ export interface ActividadPoa {
   totalSubactividades: number;
   createdAt: string;
   updatedAt?: string;
+}
+
+// Interfaz para la UI que combina ActividadPoa con campos adicionales para la interfaz
+export interface ActividadUI extends Omit<ActividadPoa, 'tipoActividad'> {
+  tipoActividad?: TipoActividad;
+  subactividades: SubactividadPoaApi[];
+  expandido: boolean;
+  totalSubactividades: number;
 }
 
 export interface SubactividadPoaApi {

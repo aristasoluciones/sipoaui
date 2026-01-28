@@ -17,7 +17,7 @@ import ProyectoStageBeneficiariosSidebar from './ProyectoStageBeneficiariosSideb
 import ProyectoStageFormulacionSidebar from './ProyectoStageFormulacionSidebar';
 
 import { useProjectOperations } from '@/src/hooks/useProjectOperations';
-import { Prioridad, EstatusEtapa, ProyectoWizardProps,ProyectoFormData } from '@/types/proyectos.d';
+import { Prioridad, EstatusEtapa, ProyectoWizardProps, ProyectoFormData, Proyecto } from '@/types/proyectos.d';
 import { useNotification } from '@/layout/context/notificationContext';
 import { formatApiError } from '@/src/utils';
 import { PROYECTO_STAGES, mapEtapaActualToStageId, getStageById, getRequiredStages, isStageRequired } from '@/src/config/proyectos';
@@ -41,6 +41,8 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
   const router = useRouter();
   // Estado local para saving
   const [wizardSaving, setWizardSaving] = useState(false);
+  // Estado local del proyecto para actualizaciones en tiempo real
+  const [localProject, setLocalProject] = useState(project);
 
   // Usar hooks separados para evitar prop drilling y estado duplicado
   const { handleSaveProject } = useProjectOperations({
@@ -79,13 +81,18 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
   const [currentEtapaEstatus, setCurrentEtapaEstatus] = useState<string | null>(null);
   const toast = useRef<Toast>(null);
 
+  // Sincronizar localProject con project cuando cambie
+  useEffect(() => {
+    setLocalProject(project);
+  }, [project]);
+
   // Inicializar etapas completadas cuando se carga el proyecto
   useEffect(() => {
-    if (project?.etapasCompletadas) {
+    if (localProject?.etapasCompletadas) {
       const newCompletedStages = new Set<number>();
       
       // Marcar como completadas las etapas que vienen en etapasCompletadas
-      project.etapasCompletadas.forEach(etapa => {
+      localProject.etapasCompletadas.forEach(etapa => {
         // Mapear el ID de la etapa completada al ID del stage
         // Asumiendo que el ID de EtapaCompletada corresponde al ID del stage
         if(etapa.estatus === EstatusEtapa.APROBADO)
@@ -95,10 +102,10 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
       setCompletedStages(newCompletedStages);
       
       // Guardar el estatus de la etapa actual que viene del servidor
-      const etapaEstatus = project.estatusEtapaActual || 'Captura';
+      const etapaEstatus = localProject.estatusEtapaActual || 'Captura';
       setCurrentEtapaEstatus(etapaEstatus);
     }
-  }, [project?.etapasCompletadas, project?.estatusEtapaActual]);
+  }, [localProject?.etapasCompletadas, localProject?.estatusEtapaActual]);
 
   // Actualizar ejercicio fiscal cuando cambie
   useEffect(() => {
@@ -109,6 +116,11 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
       }));
     }
   }, [selectedEjercicioFiscal, formData.ejercicio_id]);
+
+  // Función para actualizar el proyecto localmente
+  const handleProjectUpdate = (updatedFields: Partial<Proyecto>) => {
+    setLocalProject(prev => prev ? { ...prev, ...updatedFields } : undefined);
+  };
 
   // Obtener el progreso de una etapa, en porcentaje
   const getStageProgress = (stageId: number): number => {
@@ -136,8 +148,8 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     if (stageId === 1) return true; // Primera etapa siempre desbloqueada
     
     // Si existe un proyecto cargado con etapa actual
-    if (project?.etapaActual && currentEtapaEstatus) {
-      const currentStageId = mapEtapaActualToStageId(project.etapaActual);
+    if (localProject?.etapaActual && currentEtapaEstatus) {
+      const currentStageId = mapEtapaActualToStageId(localProject.etapaActual);
       
       // Si es la etapa actual, está desbloqueada
       if (stageId === currentStageId) return true;
@@ -172,7 +184,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     }
       
     // Buscar la etapa en etapasCompletadas de la API
-    const etapaCompletada = project?.etapasCompletadas?.find(e => e.id === stageId);
+    const etapaCompletada = localProject?.etapasCompletadas?.find(e => e.id === stageId);
 
     // Si la etapa existe en etapasCompletadas, devolver su estatus
     if (etapaCompletada) {
@@ -196,8 +208,8 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     }
 
     // Si es la etapa POA (stageId 3), redirigir a la página dedicada
-    if (stageId === 3 && project?.uuid) {
-      router.push(`/proyectos/${project.uuid}/poa`);
+    if (stageId === 3 && localProject?.uuid) {
+      router.push(`/proyectos/${localProject.uuid}/poa`);
       return;
     }
 
@@ -212,9 +224,9 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     // Para proyectos nuevos, ninguna etapa está en modo solo lectura
     if (isCreating) return false;
 
-    if (!project?.etapaActual || !currentEtapaEstatus) return false;
+    if (!localProject?.etapaActual || !currentEtapaEstatus) return false;
 
-    const currentStageId = mapEtapaActualToStageId(project.etapaActual);
+    const currentStageId = mapEtapaActualToStageId(localProject.etapaActual);
 
     // Si es la etapa actual y está aprobada o en revisión, es solo lectura
     if (stageId === currentStageId && (currentEtapaEstatus === EstatusEtapa.APROBADO || currentEtapaEstatus === EstatusEtapa.EN_REVISION)) {
@@ -436,12 +448,12 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
             )
           ) : null
         ) : activeStage === 2 ? (
-          project ? (
+          localProject ? (
             isStageReadOnly(2) ? (
               <ProyectoStageDiagnosticoView
                 visible={sidebarVisible}
                 onHide={handleCloseSidebar}
-                project={project}
+                project={localProject}
                 onProjectReload={onProjectReload}
               />
             ) : (
@@ -449,41 +461,42 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
                 visible={sidebarVisible}
                 onHide={handleCloseSidebar}
                 stage={getStageById(activeStage)!}
-                project={project}
+                project={localProject}
                 onCancel={handleCloseSidebar}
                 onProjectReload={onProjectReload}
+                onProjectUpdate={handleProjectUpdate}
               />
             )
           ) : null
         ) : activeStage === 3 ? (
-          project ? (
+          localProject ? (
             <ProyectoStagePoaSidebar
               visible={sidebarVisible}
               onHide={handleCloseSidebar}
               stage={getStageById(activeStage)!}
-              project={project}
+              project={localProject}
               onSave={handleSaveStage}
               onCancel={handleCloseSidebar}
             />
           ) : null
         ) : activeStage === 4 ? (
-          project ? (
+          localProject ? (
             <ProyectoStageBeneficiariosSidebar
               visible={sidebarVisible}
               onHide={handleCloseSidebar}
               stage={getStageById(activeStage)!}
-              project={project}
+              project={localProject}
               onSave={handleSaveStage}
               onCancel={handleCloseSidebar}
             />
           ) : null
         ) : activeStage === 5 ? (
-          project ? (
+          localProject ? (
             <ProyectoStageFormulacionSidebar
               visible={sidebarVisible}
               onHide={handleCloseSidebar}
               stage={getStageById(activeStage)!}
-              project={project}
+              project={localProject}
               onSave={handleSaveStage}
               onCancel={handleCloseSidebar}
             />

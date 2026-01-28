@@ -12,7 +12,6 @@ import {
     getUserDataSecurely,
     storeTokenSecurely,
     getTokenSecurely,
-    clearTokenSecurely,
     clearSessionData, 
     isSuperAdminRole,
     isValidTokenFormat

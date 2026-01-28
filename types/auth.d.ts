@@ -5,6 +5,8 @@ export interface User {
   email: string;
   rol: string;
   permisos: string[];
+  unidad?: string;
+  rolesTitle?: string[];
 }
 
 export interface AuthContextProps {

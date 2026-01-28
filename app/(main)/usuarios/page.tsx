@@ -10,9 +10,7 @@ import { InputText } from 'primereact/inputtext';
 import { Dialog } from 'primereact/dialog';
 import { Badge } from 'primereact/badge';
 import { Tag } from 'primereact/tag';
-import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
-import { Toolbar } from 'primereact/toolbar';
-import { Card } from 'primereact/card';
+import { ConfirmDialog } from 'primereact/confirmdialog';
 import { MultiSelect } from 'primereact/multiselect';
 import { Dropdown } from 'primereact/dropdown';
 import { BreadCrumb } from 'primereact/breadcrumb';
@@ -29,6 +27,7 @@ import { useNotification } from '@/layout/context/notificationContext';
 import { usePermissions } from '@/src/hooks/usePermissions';
 import { arrayToCamelCase } from '@/src/utils/transformers';
 import { unidadesService } from '@/src/services/catalogos.service';
+import { formatApiError } from '@/src/utils/apiErrors';
 
 
 const UsuariosPage = () => {
@@ -233,7 +232,8 @@ const UsuariosPage = () => {
       setUserDialog(false);
       setUsuario(null);
     } catch (err) {
-      errorRef.current('Error al guardar usuario');
+      const errorMessage = formatApiError(err);
+      error(errorMessage || 'Error al guardar el usuario');
     }
   };
 

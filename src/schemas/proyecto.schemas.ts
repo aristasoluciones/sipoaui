@@ -51,5 +51,47 @@ export const proyectoInformacionGeneralSchema = yup.object().shape({
     .positive('Seleccione un tipo de proyecto válido'),
 });
 
+// Esquema de validación para actividad POA
+export const actividadSchema = yup.object().shape({
+  descripcion: yup
+    .string()
+    .required('La descripción de la actividad es obligatoria')
+    .min(3, 'La descripción debe tener al menos 3 caracteres')
+    .max(255, 'La descripción no puede exceder 255 caracteres'),
+  tipo_actividad_id: yup
+    .number()
+    .integer('El tipo de actividad debe ser un número entero')
+    .required('El tipo de actividad es obligatorio')
+    .positive('El tipo de actividad debe ser un número positivo')
+});
+
+// Esquema de validación para subactividad POA
+export const subactividadSchema = yup.object().shape({
+  descripcion: yup
+    .string()
+    .required('La descripción de la subactividad es obligatoria')
+    .min(3, 'La descripción debe tener al menos 3 caracteres')
+    .max(255, 'La descripción no puede exceder 255 caracteres'),
+  tipo_actividad_id: yup
+    .number()
+    .integer('El tipo de actividad debe ser un número entero')
+    .required('El tipo de actividad es obligatorio')
+    .positive('El tipo de actividad debe ser un número positivo'),
+  fecha_inicio: yup
+    .date()
+    .required('La fecha de inicio es obligatoria')
+    .typeError('La fecha de inicio debe ser una fecha válida'),
+  fecha_termino: yup
+    .date()
+    .required('La fecha de término es obligatoria')
+    .typeError('La fecha de término debe ser una fecha válida')
+    .min(yup.ref('fecha_inicio'), 'La fecha de término debe ser posterior a la fecha de inicio'),
+  entregable_id: yup
+    .number()
+    .integer('El entregable debe ser un número entero')
+    .required('El entregable es obligatorio')
+    .positive('El entregable debe ser un número positivo')
+});
+
 // Tipos inferidos del esquema
 export type ProyectoInformacionGeneralForm = yup.InferType<typeof proyectoInformacionGeneralSchema>;

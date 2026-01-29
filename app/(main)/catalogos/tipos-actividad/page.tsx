@@ -6,8 +6,8 @@ const TiposActividadPage = () => {
   return (
     <CatalogoBasePage
       catalogoKey="tipos-actividad"
-      title="Tipos de Actividad y Subactividad"
-      description="Gestión de tipos de actividades y sus subactividades"
+      title="Tipos de Actividad"
+      description="Gestión de tipos de actividades"
     />
   );
 };

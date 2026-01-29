@@ -83,7 +83,7 @@ export const CATALOGOS_CONFIG: CatalogoConfig[] = [
   // Planeación Técnica
   {
     key: 'tipos-actividad',
-    title: 'Tipos de Actividad y Subactividad',
+    title: 'Tipos de Actividad',
     category: 'planeacion',
     icon: 'pi pi-cog',
     route: '/catalogos/tipos-actividad',

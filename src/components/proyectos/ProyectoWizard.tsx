@@ -212,6 +212,11 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
       router.push(`/proyectos/${localProject.uuid}/poa`);
       return;
     }
+    // Si es la etapa Estimación (stageId 4), redirigir a la página dedicada
+    if (stageId === 4 && localProject?.uuid) {
+      router.push(`/proyectos/${localProject.uuid}/beneficiarios`);
+      return;
+    }
 
     // aplicar clase a document body para evitar scroll cuando el sidebar esté abierto
     document.body.classList.add('overflow-hidden');

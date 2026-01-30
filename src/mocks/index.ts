@@ -495,26 +495,58 @@ export const MOCK_CATALOGOS = {
     {
       id: 1,
       nombre: 'Ciudadanos',
-      codigo: 'CI001',
-      descripcion: 'Ciudadanos en general',
-      estado: 'activo' as const,
-      fechaCreacion: '2024-01-08',
-      creadoPor: 'admin@demo.com',
-      tipo: 'persona_fisica' as const,
-      sector: 'Público general',
-      region: 'Nacional'
+      estatus: 'Activo',
+      created_at: '2024-01-08',
+      updated_at: '2024-01-08'
     },
     {
       id: 2,
       nombre: 'Empresas',
-      codigo: 'EM001',
-      descripcion: 'Empresas del sector privado',
-      estado: 'activo' as const,
-      fechaCreacion: '2024-01-10',
-      creadoPor: 'user@demo.com',
-      tipo: 'persona_moral' as const,
-      sector: 'Privado',
-      region: 'Nacional'
+      estatus: 'Activo',
+      created_at: '2024-01-10',
+      updated_at: '2024-01-10'
+    },
+    {
+      id: 3,
+      nombre: 'Instituciones Educativas',
+      estatus: 'Activo',
+      created_at: '2024-01-12',
+      updated_at: '2024-01-12'
+    },
+    {
+      id: 4,
+      nombre: 'Organizaciones de la Sociedad Civil',
+      estatus: 'Activo',
+      created_at: '2024-01-15',
+      updated_at: '2024-01-15'
+    },
+    {
+      id: 5,
+      nombre: 'Servidores Públicos',
+      estatus: 'Activo',
+      created_at: '2024-01-18',
+      updated_at: '2024-01-18'
+    },
+    {
+      id: 6,
+      nombre: 'Personas con Discapacidad',
+      estatus: 'Activo',
+      created_at: '2024-01-20',
+      updated_at: '2024-01-20'
+    },
+    {
+      id: 7,
+      nombre: 'Adultos Mayores',
+      estatus: 'Activo',
+      created_at: '2024-01-22',
+      updated_at: '2024-01-22'
+    },
+    {
+      id: 8,
+      nombre: 'Jóvenes',
+      estatus: 'Activo',
+      created_at: '2024-01-25',
+      updated_at: '2024-01-25'
     }
   ],
 
@@ -791,6 +823,28 @@ export const MOCK_POA = {
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-15T00:00:00Z'
 };
+
+// Mock de Beneficiarios por Proyecto
+export const MOCK_BENEFICIARIOS_PROYECTO: any[] = [
+  {
+    id: 1,
+    poa_actividad_id: 1,
+    beneficiario_id: 1,
+    beneficiario_nombre: 'Ciudadanos',
+    cantidad: 500,
+    created_at: '2025-01-20T10:00:00Z',
+    updated_at: '2025-01-20T10:00:00Z'
+  },
+  {
+    id: 2,
+    poa_actividad_id: 1,
+    beneficiario_id: 3,
+    beneficiario_nombre: 'Instituciones Educativas',
+    cantidad: 25,
+    created_at: '2025-01-20T11:00:00Z',
+    updated_at: '2025-01-20T11:00:00Z'
+  }
+];
 
 // Hook para verificar si los mocks están habilitados
 export const useMocks = () => MOCK_CONFIG.enabled;

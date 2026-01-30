@@ -330,6 +330,46 @@ export interface GrupoBeneficiarios {
   necesidadesEspecificas: string[];
 }
 
+// Beneficiarios por actividad POA (nueva estructura detallada)
+export interface BeneficiarioProyectoApi {
+  id: number;
+  poa_actividad_id: number;
+  beneficiario_id: number;
+  beneficiario_nombre: string;
+  cantidad: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BeneficiarioProyecto {
+  id: number;
+  poaActividadId: number;
+  beneficiarioId: number;
+  beneficiarioNombre: string;
+  cantidad: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BeneficiariosResponse {
+  data: BeneficiarioProyectoApi[];
+  meta: {
+    total_beneficiarios: number;
+    cantidad_registros: number;
+    estatus_etapa: EstatusEtapa;
+  };
+}
+
+export interface CreateBeneficiarioRequest {
+  poa_actividad_id: number;
+  beneficiario_id: number;
+  cantidad: number;
+}
+
+export interface UpdateBeneficiarioRequest {
+  cantidad: number;
+}
+
 // Etapa 4: Formulación de Proyecto Cuantitativo
 export interface FormulacionCuantitativa {
   matrizLogica: MatrizLogica;

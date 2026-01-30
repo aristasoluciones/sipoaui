@@ -1,5 +1,6 @@
 import http from "@/src/lib/axios";
-import { ProyectoApi, ProyectoFormData, DiagnosticoApi, ProgramaOperativoAnualApi, ActividadPoaApi, SubactividadPoaApi } from "@/types/proyectos";
+import { ProyectoApi, ProyectoFormData, DiagnosticoApi, ProgramaOperativoAnualApi, ActividadPoaApi, SubactividadPoaApi, BeneficiariosResponse, BeneficiarioProyectoApi, CreateBeneficiarioRequest, UpdateBeneficiarioRequest } from "@/types/proyectos";
+import { MOCK_CONFIG, MOCK_BENEFICIARIOS_PROYECTO, MOCK_CATALOGOS, mockUtils } from "@/src/mocks";
 
 export const ProyectoService = {
 
@@ -138,6 +139,31 @@ export const ProyectoService = {
 
     async resolverObservaciones(uuid: string): Promise<any> {
         const response = await http.post(`/api/proyectos/${uuid}/workflow/resolver-observaciones`);
+        return response.data;
+    },
+
+    // Funciones para gestión de beneficiarios por proyecto
+    async getBeneficiariosPorProyecto(uuid: string): Promise<any> {
+        const response = await http.get<BeneficiariosResponse>(`/api/proyectos/${uuid}/beneficiarios`);
+        return response;
+    },
+
+    async createBeneficiario(uuid: string, data: CreateBeneficiarioRequest): Promise<BeneficiarioProyectoApi> {
+        const response = await http.post(`/api/proyectos/${uuid}/beneficiarios`, data);
+        return response.data;
+    },
+
+    async updateBeneficiario(uuid: string, beneficiarioId: number, data: UpdateBeneficiarioRequest): Promise<BeneficiarioProyectoApi> {
+        const response = await http.put(`/api/proyectos/${uuid}/beneficiarios/${beneficiarioId}`, data);
+        return response.data;
+    },
+
+    async deleteBeneficiario(uuid: string, beneficiarioId: number): Promise<void> {
+        await http.delete(`/api/proyectos/${uuid}/beneficiarios/${beneficiarioId}`);
+    },
+
+    async getActividadesPoa(uuid: string, poaId: number): Promise<ActividadPoaApi[]> {
+        const response = await http.get(`/api/proyectos/${uuid}/poa/${poaId}/actividades`);
         return response.data;
     }
 };

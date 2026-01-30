@@ -79,7 +79,7 @@ const NewProjectPage: React.FC = () => {
 
   const breadcrumbHome = { icon: 'pi pi-home', url: '/' };
 
-  if (!hasAnyPermission(['cartera_de_proyectos.proyectos.create'])) {
+  if (!hasAnyPermission(['cartera_de_proyectos.proyectos', 'cartera_de_proyectos.proyectos.create'])) {
     return <PageAccessDenied />;
   }
 

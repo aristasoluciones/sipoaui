@@ -35,9 +35,9 @@ const UsuariosPage = () => {
 
   const router = useRouter();
 
-  const accessCreate = canCreate('rolesyusuarios.usuarios');
-  const accessEdit = canUpdate('rolesyusuarios.usuarios');
-  const accessDelete = canDelete('rolesyusuarios.usuarios');
+  const accessCreate = canCreate('roles_y_usuarios.usuarios');
+  const accessEdit = canUpdate('roles_y_usuarios.usuarios');
+  const accessDelete = canDelete('roles_y_usuarios.usuarios');
 
   const { success, error } = useNotification();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);

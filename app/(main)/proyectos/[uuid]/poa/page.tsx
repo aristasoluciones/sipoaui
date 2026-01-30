@@ -273,7 +273,7 @@ const PoaPage: React.FC = () => {
 
   const breadcrumbHome = { icon: 'pi pi-home', url: '/' };
 
-  if (!hasAnyPermission(['proyectos.read', 'proyectos.update'])) {
+  if (!hasAnyPermission(['cartera_de_proyectos.proyectos', 'cartera_de_proyectos.proyectos.access'])) {
     return <PageAccessDenied />;
   }
 

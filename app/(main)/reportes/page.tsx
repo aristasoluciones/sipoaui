@@ -119,12 +119,12 @@ const ReportesPage: React.FC = () => {
   }, [reportesWithPermissions]);
 
   // Verificar permiso general para acceder a la sección de reportes
-  if (!hasAnyPermission(['centro_de_reportes.reportes'])) {
+  if (!hasAnyPermission(['centro_de_reportes.reportes', 'centro_de_reportes'])) {
     return <PageAccessDenied />;
   }
 
   return (
-    <PermissionGuard permissions={['reportes.read']} fallback={<PageAccessDenied />}>
+    <PermissionGuard permissions={['centro_de_reportes.reportes']} fallback={<PageAccessDenied />}>
       <div className="grid">
         {/* Breadcrumb */}
         <div className="col-12">

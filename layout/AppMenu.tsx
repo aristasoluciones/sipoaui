@@ -81,9 +81,9 @@ const AppMenu = () => {
         {
             label: 'Centro de reportes',
             items: [
-                { label: 'Reportes', icon: 'pi pi-fw pi-file', to: '/reportes', permissions: ['reportes'] },
+                { label: 'Reportes', icon: 'pi pi-fw pi-file', to: '/reportes', permissions: ['centro_de_reportes.reportes'] },
             ],
-            permissions: ['centro_de_reportes','reportes']  // Ejemplo de permiso requerido
+            permissions: ['centro_de_reportes','centro_de_reportes.reportes']  // Ejemplo de permiso requerido
         }
        
     ];

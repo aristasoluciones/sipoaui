@@ -302,7 +302,7 @@ const BeneficiariosPage: React.FC = () => {
     { label: 'Beneficiarios' }
   ];
 
-  if (!hasAnyPermission(['proyectos.read', 'proyectos.manage'])) {
+  if (!hasAnyPermission(['cartera_de_proyectos.proyectos', 'cartera_de_proyectos.proyectos.access'])) {
     return <PageAccessDenied />;
   }
 
@@ -392,7 +392,7 @@ const BeneficiariosPage: React.FC = () => {
                   />
                 )}
                 {/* Observar - solo si esta en revisión */}
-                {estatusEtapa === EstatusEtapa.EN_REVISION && hasAnyPermission(['proyectos.manage']) && (
+                {estatusEtapa === EstatusEtapa.EN_REVISION && (
                   <Button
                     label="Observar"
                     icon="pi pi-exclamation-triangle"
@@ -402,7 +402,7 @@ const BeneficiariosPage: React.FC = () => {
                 )}
                 
                 {/* Aprobar - solo si está en revisión */}
-                {estatusEtapa === EstatusEtapa.EN_REVISION && hasAnyPermission(['proyectos.manage']) && (
+                {estatusEtapa === EstatusEtapa.EN_REVISION && (
                   <Button
                     label="Aprobar"
                     icon="pi pi-check"
@@ -436,7 +436,7 @@ const BeneficiariosPage: React.FC = () => {
                 )}
                 
                 {/* Observar - solo si no está aprobado */}
-                {estatusEtapa !== EstatusEtapa.APROBADO && hasAnyPermission(['proyectos.manage']) && (
+                {estatusEtapa !== EstatusEtapa.APROBADO && (
                   <Button
                     icon="pi pi-exclamation-triangle"
                     tooltip="Observar"
@@ -447,7 +447,7 @@ const BeneficiariosPage: React.FC = () => {
                 )}
                 
                 {/* Aprobar - solo si está en revisión */}
-                {estatusEtapa === EstatusEtapa.EN_REVISION && hasAnyPermission(['proyectos.manage']) && (
+                {estatusEtapa === EstatusEtapa.EN_REVISION && (
                   <Button
                     icon="pi pi-check"
                     tooltip="Aprobar"

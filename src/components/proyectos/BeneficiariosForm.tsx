@@ -57,8 +57,8 @@ const BeneficiariosForm: React.FC<BeneficiariosFormProps> = ({
       newErrors.beneficiario = 'Debe seleccionar un tipo de beneficiario';
     }
 
-    if (cantidad < 0) {
-      newErrors.cantidad = 'La cantidad no puede ser negativa';
+    if (cantidad < 1) {
+      newErrors.cantidad = 'La cantidad debe ser al menos 1';
     }
 
     // Validar duplicados solo en modo crear
@@ -176,13 +176,34 @@ const BeneficiariosForm: React.FC<BeneficiariosFormProps> = ({
           </div>
         )}
 
-        {/* Mostrar tipo de beneficiario en modo edición */}
+        {/* Tipo de beneficiario en modo edición */}
         {isEditMode && beneficiarioEdit && (
           <div className="field">
-            <label className="font-semibold block mb-2">Tipo de Beneficiario</label>
-            <div className="p-3 surface-100 border-round">
-              <span className="text-sm">{beneficiarioEdit.beneficiarioNombre}</span>
-            </div>
+            <label htmlFor="beneficiario" className="font-semibold block mb-2">
+              Tipo de Beneficiario <span className="text-red-500">*</span>
+            </label>
+            {readonly ? (
+              <div className="p-3 surface-100 border-round">
+                <span className="text-sm">{beneficiarioEdit.beneficiarioNombre}</span>
+              </div>
+            ) : (
+              <Dropdown
+                id="beneficiario"
+                value={selectedBeneficiario}
+                options={catalogoBeneficiarios}
+                onChange={(e) => setSelectedBeneficiario(e.value)}
+                optionLabel="nombre"
+                optionValue="id"
+                placeholder="Seleccione un tipo"
+                filter
+                className={`w-full ${errors.beneficiario ? 'p-invalid' : ''}`}
+                emptyMessage="No hay beneficiarios disponibles"
+                disabled={readonly}
+              />
+            )}
+            {errors.beneficiario && (
+              <Message severity="error" text={errors.beneficiario} className="w-full mt-2" />
+            )}
           </div>
         )}
 
@@ -195,7 +216,7 @@ const BeneficiariosForm: React.FC<BeneficiariosFormProps> = ({
             id="cantidad"
             value={cantidad}
             onValueChange={(e) => setCantidad(e.value || 0)}
-            min={0}
+            min={1}
             showButtons
             buttonLayout="horizontal"
             incrementButtonIcon="pi pi-plus"

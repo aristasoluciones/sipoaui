@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { BreadCrumb } from 'primereact/breadcrumb';
 import { Button } from 'primereact/button';
 import { Badge } from 'primereact/badge';
+import { Tag } from 'primereact/tag';
 import { Skeleton } from 'primereact/skeleton';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { Toast } from 'primereact/toast';
@@ -16,6 +17,7 @@ import { useProjectOperations } from '@/src/hooks/useProjectOperations';
 import ActividadBeneficiarios from '@/src/components/proyectos/ActividadBeneficiarios';
 import BeneficiariosForm from '@/src/components/proyectos/BeneficiariosForm';
 import ObservacionDialog from '@/src/components/proyectos/ObservacionDialog';
+import ObservacionViewer from '@/src/components/proyectos/ObservacionViewer';
 import { 
   ActividadPoaApi, 
   BeneficiarioProyecto, 
@@ -23,7 +25,7 @@ import {
   UpdateBeneficiarioRequest,
   ProyectoApi,
   EstatusEtapa,
-  BeneficiariosResponse
+  Observacion,
 } from '@/types/proyectos.d';
 import { Beneficiario } from '@/types/catalogos';
 import { toCamelCase } from '@/src/utils/transformers';
@@ -48,6 +50,7 @@ const BeneficiariosPage: React.FC = () => {
   const [selectedActividad, setSelectedActividad] = useState<ActividadPoaApi | null>(null);
   const [beneficiarioEdit, setBeneficiarioEdit] = useState<BeneficiarioProyecto | null>(null);
   const [observacionDialogVisible, setObservacionDialogVisible] = useState(false);
+  const [observacionesViewerVisible, setObservacionesViewerVisible] = useState(false);
   
   const isLoadingRef = useRef(false);
 
@@ -72,7 +75,7 @@ const BeneficiariosPage: React.FC = () => {
     }
   };
 
-  const { handleSolicitarRevision, handleAprobar, handleObservar } = useProjectOperations({
+  const { handleSolicitarRevision, handleAprobar, handleObservar, handleResolverObservaciones, handleGetObservacionesPendientes } = useProjectOperations({
     isCreating: false,
     selectedProject: null,
     onSuccess: () => {
@@ -270,11 +273,27 @@ const BeneficiariosPage: React.FC = () => {
     }
   };
 
+  const handleGuardarObservaciones = async (observacionesActualizadas: Observacion[]) => {
+    const todasResueltas = observacionesActualizadas.every(obs => obs.resuelta);
+    
+    if (todasResueltas) {
+      try {
+        await handleResolverObservaciones(projectUuid);
+        setObservacionesViewerVisible(false);
+        // Recargar datos después de resolver observaciones
+        loadData();
+      } catch (error) {
+        console.error('Error resolving observations:', error);
+      }
+    }
+  };
+
   const totalGeneralBeneficiarios = Array.isArray(beneficiarios) 
     ? beneficiarios.reduce((sum, b) => sum + b.cantidad, 0) 
     : 0;
 
   const isAprobado = estatusEtapa === EstatusEtapa.APROBADO;
+  const isReadonly = isAprobado || estatusEtapa === EstatusEtapa.EN_REVISION;
 
   const breadcrumbHome = { icon: 'pi pi-home', url: '/' };
   const breadcrumbItems = [
@@ -345,57 +364,110 @@ const BeneficiariosPage: React.FC = () => {
 
         {/* Lista de actividades con sus beneficiarios */}
         <div className="surface-card shadow-2 border-round">
-          {/* Header con botones del workflow */}
-          <div className="p-3 border-bottom-1 border-200 bg-gray-50 flex justify-content-between align-items-center">
-            <div className="flex align-items-center gap-3">
-              <h3 className="text-lg font-semibold text-900 m-0">Lista de actividades con sus beneficiarios</h3>
-              {isAprobado && (
-                <Badge value="APROBADO" severity="success" className="text-sm font-semibold" />
-              )}
+          {/* Header con acciones y estado */}
+          <div className="flex flex-column md:flex-row md:justify-content-between md:align-items-center gap-3 p-3 border-bottom-1 border-200 bg-gray-50">
+            <div className="flex align-items-center gap-3 flex-wrap">
+              <div className="flex align-items-center gap-2 flex-wrap">
+                {estatusEtapa === EstatusEtapa.EN_REVISION && (
+                  <Tag value="En Revisión" severity="warning" icon="pi pi-clock" />
+                )}
+                {isAprobado && (
+                  <Tag value="Aprobado" severity="success" icon="pi pi-check" />
+                )}
+                {estatusEtapa === EstatusEtapa.OBSERVADO && (
+                  <Tag value="Observado" severity="danger" icon="pi pi-exclamation-triangle" />
+                )}
+              </div>
             </div>
-            <div className="flex gap-2">
-              {/* Ver observación - solo si está observado */}
-              {estatusEtapa === EstatusEtapa.OBSERVADO && (
-                <Button
-                  label="Ver observación"
-                  icon="pi pi-eye"
-                  className="p-button-outlined p-button-sm"
-                  onClick={() => {
-                    // TODO: Implementar vista de observación
-                    showMsgError('Funcionalidad pendiente', 'Vista de observación no implementada aún');
-                  }}
-                />
-              )}
-              
-              {/* Observar - solo si no está aprobado */}
-              {estatusEtapa !== EstatusEtapa.APROBADO && hasAnyPermission(['proyectos.manage']) && (
-                <Button
-                  label="Observar"
-                  icon="pi pi-exclamation-triangle"
-                  className="p-button-warning p-button-sm"
-                  onClick={() => setObservacionDialogVisible(true)}
-                />
-              )}
-              
-              {/* Aprobar - solo si está en revisión */}
-              {estatusEtapa === EstatusEtapa.EN_REVISION && hasAnyPermission(['proyectos.manage']) && (
-                <Button
-                  label="Aprobar"
-                  icon="pi pi-check"
-                  className="p-button-success p-button-sm"
-                  onClick={handleAprobarBeneficiarios}
-                />
-              )}
-              
-              {/* Enviar a revisión - solo si todas las actividades tienen beneficiarios y está en captura */}
-              {todasLasActividadesTienenBeneficiarios() && estatusEtapa === EstatusEtapa.CAPTURA && (
-                <Button
-                  label="Enviar a revisión"
-                  icon="pi pi-send"
-                  className="p-button-primary p-button-sm"
-                  onClick={handleEnviarRevision}
-                />
-              )}
+            <div className="flex gap-2 flex-wrap">
+              {/* Desktop buttons */}
+              <div className="hidden md:flex gap-2">
+                {/* Ver observación - solo si está observado */}
+                {estatusEtapa === EstatusEtapa.OBSERVADO && (
+                  <Button
+                    label="Ver observación"
+                    icon="pi pi-eye"
+                    className="p-button-outlined p-button-sm"
+                    onClick={() => setObservacionesViewerVisible(true)}
+                  />
+                )}
+                {/* Observar - solo si esta en revisión */}
+                {estatusEtapa === EstatusEtapa.EN_REVISION && hasAnyPermission(['proyectos.manage']) && (
+                  <Button
+                    label="Observar"
+                    icon="pi pi-exclamation-triangle"
+                    className="p-button-warning p-button-sm"
+                    onClick={() => setObservacionDialogVisible(true)}
+                  />
+                )}
+                
+                {/* Aprobar - solo si está en revisión */}
+                {estatusEtapa === EstatusEtapa.EN_REVISION && hasAnyPermission(['proyectos.manage']) && (
+                  <Button
+                    label="Aprobar"
+                    icon="pi pi-check"
+                    className="p-button-success p-button-sm"
+                    onClick={handleAprobarBeneficiarios}
+                  />
+                )}
+                
+                {/* Enviar a revisión - solo si todas las actividades tienen beneficiarios y está en captura */}
+                {todasLasActividadesTienenBeneficiarios() && estatusEtapa === EstatusEtapa.CAPTURA && (
+                  <Button
+                    label="Enviar a revisión"
+                    icon="pi pi-send"
+                    className="p-button-primary p-button-sm"
+                    onClick={handleEnviarRevision}
+                  />
+                )}
+              </div>
+
+              {/* Mobile buttons - icon only */}
+              <div className="flex md:hidden gap-1">
+                {/* Ver observación - solo si está observado */}
+                {estatusEtapa === EstatusEtapa.OBSERVADO && (
+                  <Button
+                    icon="pi pi-eye"
+                    tooltip="Ver observación"
+                    tooltipOptions={{ position: 'bottom' }}
+                    className="p-button-outlined p-button-sm"
+                    onClick={() => setObservacionesViewerVisible(true)}
+                  />
+                )}
+                
+                {/* Observar - solo si no está aprobado */}
+                {estatusEtapa !== EstatusEtapa.APROBADO && hasAnyPermission(['proyectos.manage']) && (
+                  <Button
+                    icon="pi pi-exclamation-triangle"
+                    tooltip="Observar"
+                    tooltipOptions={{ position: 'bottom' }}
+                    className="p-button-warning p-button-sm"
+                    onClick={() => setObservacionDialogVisible(true)}
+                  />
+                )}
+                
+                {/* Aprobar - solo si está en revisión */}
+                {estatusEtapa === EstatusEtapa.EN_REVISION && hasAnyPermission(['proyectos.manage']) && (
+                  <Button
+                    icon="pi pi-check"
+                    tooltip="Aprobar"
+                    tooltipOptions={{ position: 'bottom' }}
+                    className="p-button-success p-button-sm"
+                    onClick={handleAprobarBeneficiarios}
+                  />
+                )}
+                
+                {/* Enviar a revisión - solo si todas las actividades tienen beneficiarios y está en captura */}
+                {todasLasActividadesTienenBeneficiarios() && estatusEtapa === EstatusEtapa.CAPTURA && (
+                  <Button
+                    icon="pi pi-send"
+                    tooltip="Enviar a revisión"
+                    tooltipOptions={{ position: 'bottom' }}
+                    className="p-button-primary p-button-sm"
+                    onClick={handleEnviarRevision}
+                  />
+                )}
+              </div>
             </div>
           </div>
           
@@ -411,7 +483,7 @@ const BeneficiariosPage: React.FC = () => {
                   onAddBeneficiario={handleAddBeneficiario}
                   onEditBeneficiario={handleEditBeneficiario}
                   onDeleteBeneficiario={handleDeleteBeneficiario}
-                  readonly={isAprobado}
+                  readonly={isReadonly}
                 />
               );
             })}
@@ -421,9 +493,9 @@ const BeneficiariosPage: React.FC = () => {
         {/* Botones de navegación */}
         <div className="flex justify-content-between mt-4">
           <Button
-            label="Volver a POA"
+            label="Volver a Proyecto"
             icon="pi pi-arrow-left"
-            onClick={() => router.push(`/proyectos/${projectUuid}/poa`)}
+            onClick={() => router.push(`/proyectos/${projectUuid}`)}
             className="p-button-outlined"
           />
         </div>
@@ -438,7 +510,7 @@ const BeneficiariosPage: React.FC = () => {
         beneficiarioEdit={beneficiarioEdit}
         catalogoBeneficiarios={catalogoBeneficiarios}
         beneficiariosExistentes={beneficiarios}
-        readonly={isAprobado}
+        readonly={isReadonly}
       />
 
       {/* Diálogo de observaciones */}
@@ -446,6 +518,17 @@ const BeneficiariosPage: React.FC = () => {
         visible={observacionDialogVisible}
         onHide={() => setObservacionDialogVisible(false)}
         onSubmit={handleObservarBeneficiarios}
+      />
+
+      {/* Viewer para observaciones */}
+      <ObservacionViewer
+        visible={observacionesViewerVisible}
+        onHide={() => setObservacionesViewerVisible(false)}
+        observaciones={[]}
+        titulo="Observaciones - Estimación de Beneficiarios"
+        onGuardarCambios={handleGuardarObservaciones}
+        projectUuid={projectUuid}
+        onGetObservaciones={handleGetObservacionesPendientes}
       />
     </>
   );

@@ -54,10 +54,8 @@ const NewProjectPage: React.FC = () => {
         ]);
 
         setTiposProyecto([
-          { id: 1, nombre: 'Interno de la Institución' },
-          { id: 2, nombre: 'Externos de la Institución' },
-          { id: 3, nombre: 'Microproyectos internos' },
-          { id: 4, nombre: 'Microproyectos externos' },
+          { id: 1, nombre: 'Ordinario' },
+          { id: 2, nombre: 'Extraordinario' }
         ]);
       } catch (err) {
         console.error('Error cargando catálogos:', err);

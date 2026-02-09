@@ -44,11 +44,8 @@ const ProyectoStageGeneralView: React.FC<ProyectoStageGeneralViewProps> = ({
         ]);
 
         setTiposProyecto([
-          { id: 1, nombre: 'Desarrollo de Software' },
-          { id: 2, nombre: 'Infraestructura' },
-          { id: 3, nombre: 'Capacitación' },
-          { id: 4, nombre: 'Investigación' },
-          { id: 5, nombre: 'Mantenimiento' }
+          { id: 1, nombre: 'Ordinario' },
+          { id: 2, nombre: 'Extraordinario' }
         ]);
       } catch (err) {
         console.error('Error cargando catálogos:', err);

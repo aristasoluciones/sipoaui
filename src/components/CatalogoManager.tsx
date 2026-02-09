@@ -99,7 +99,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({
       }
 
       // Campos requeridos
-      if (['nombre', 'formato', 'estado'].includes(column.field)) {
+      if (['nombre', 'estado', 'codigo'].includes(column.field)) {
         fieldSchema = fieldSchema.required(`${column.header} es requerido`);
       }
 
@@ -170,7 +170,6 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({
     setEditingItem({
       nombre: '',
       codigo: '',
-      formato: '',
       descripcion: '',
       estado: 'Activo'
     });
@@ -581,7 +580,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({
                     <div key={column.field} className={colClass}>
                       <label htmlFor={column.field} className="block font-medium text-900 mb-2">
                         {column.header}
-                        {['nombre','formato','codigo'].includes(column.field) && 
+                        {['nombre','codigo'].includes(column.field) && 
                           <span className="text-red-500 ml-1">*</span>
                         }
                       </label>

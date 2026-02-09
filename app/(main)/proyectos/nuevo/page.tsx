@@ -10,6 +10,7 @@ import ProyectoWizard from '@/src/components/proyectos/ProyectoWizard';
 import { ProyectoApi, Proyecto } from '@/types/proyectos';
 import { toCamelCase } from '@/src/utils/transformers';
 import { CatalogoService } from '@/src/services/catalogos.service';
+import { TiposProyectoService } from '@/src/services/tiposProyecto.service';
 import { useNotification } from '@/layout/context/notificationContext';
 
 const NewProjectPage: React.FC = () => {
@@ -53,10 +54,9 @@ const NewProjectPage: React.FC = () => {
           { id: 10, nombre: 'Laura Ramírez Delgado' }
         ]);
 
-        setTiposProyecto([
-          { id: 1, nombre: 'Ordinario' },
-          { id: 2, nombre: 'Extraordinario' }
-        ]);
+        // Cargar tipos de proyecto desde el API
+        const tiposData = await TiposProyectoService.getAll();
+        setTiposProyecto(Array.isArray(tiposData) ? tiposData : []);
       } catch (err) {
         console.error('Error cargando catálogos:', err);
         showError('Error al cargar datos', 'No se pudieron cargar los catálogos. Intente recargar la página.');

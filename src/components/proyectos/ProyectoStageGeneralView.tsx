@@ -6,6 +6,7 @@ import { Button } from 'primereact/button';
 import { Chip } from 'primereact/chip';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { CatalogoService } from '@/src/services/catalogos.service';
+import { TiposProyectoService } from '@/src/services/tiposProyecto.service';
 import { Proyecto, Prioridad } from '@/types/proyectos.d';
 
 interface ProyectoStageGeneralViewProps {
@@ -43,10 +44,9 @@ const ProyectoStageGeneralView: React.FC<ProyectoStageGeneralViewProps> = ({
           { id: 5, nombre: 'Pedro Sánchez' }
         ]);
 
-        setTiposProyecto([
-          { id: 1, nombre: 'Ordinario' },
-          { id: 2, nombre: 'Extraordinario' }
-        ]);
+        // Cargar tipos de proyecto desde el API
+        const tiposData = await TiposProyectoService.getAll();
+        setTiposProyecto(Array.isArray(tiposData) ? tiposData : []);
       } catch (err) {
         console.error('Error cargando catálogos:', err);
       } finally {

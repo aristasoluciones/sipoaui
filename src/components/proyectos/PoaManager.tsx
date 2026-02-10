@@ -223,7 +223,7 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
     }
   };
 
-  
+
   // Encabezado del sidebar con estilos conservados
   const customHeader = () => {
     return (
@@ -302,7 +302,22 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
                   id="fecha_inicio"
                   value={formData.fecha_inicio}
                   onChange={(e) => {
-                    setFormData(prev => ({ ...prev, fecha_inicio: e.value as Date | null }));
+                    const newFechaInicio = e.value as Date | null;
+                    setFormData(prev => {
+                      let nuevosMeses = prev.meses_reporte;
+
+                      // Si hay fecha término y meses seleccionados, filtrar meses inválidos
+                      if (newFechaInicio && prev.fecha_termino && prev.meses_reporte.length > 0) {
+                        const mesesValidos = getMesesEntreFechas(newFechaInicio, prev.fecha_termino).map(m => m.value);
+                        nuevosMeses = prev.meses_reporte.filter(mes => mesesValidos.includes(mes));
+                      }
+
+                      return {
+                        ...prev,
+                        fecha_inicio: newFechaInicio,
+                        meses_reporte: nuevosMeses
+                      };
+                    });
                     clearFieldError('fecha_inicio');
                     clearFieldError('fecha_termino'); // Limpiar error de fecha_termino también
                   }}
@@ -324,7 +339,22 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
                   id="fecha_termino"
                   value={formData.fecha_termino}
                   onChange={(e) => {
-                    setFormData(prev => ({ ...prev, fecha_termino: e.value as Date | null }));
+                    const newFechaTermino = e.value as Date | null;
+                    setFormData(prev => {
+                      let nuevosMeses = prev.meses_reporte;
+
+                      // Si hay fecha inicio y meses seleccionados, filtrar meses inválidos
+                      if (prev.fecha_inicio && newFechaTermino && prev.meses_reporte.length > 0) {
+                        const mesesValidos = getMesesEntreFechas(prev.fecha_inicio, newFechaTermino).map(m => m.value);
+                        nuevosMeses = prev.meses_reporte.filter(mes => mesesValidos.includes(mes));
+                      }
+
+                      return {
+                        ...prev,
+                        fecha_termino: newFechaTermino,
+                        meses_reporte: nuevosMeses
+                      };
+                    });
                     clearFieldError('fecha_termino');
                     clearFieldError('fecha_inicio'); // Limpiar error de fecha_inicio también
                   }}
@@ -432,9 +462,9 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
   );
 };
 
-const PoaManager: React.FC<PoaManagerProps> = ({ 
-  projectUuid, 
-  projectName, 
+const PoaManager: React.FC<PoaManagerProps> = ({
+  projectUuid,
+  projectName,
   poaData,
   actividades: actividadesProp = [],
   tiposActividad = [],
@@ -518,37 +548,22 @@ const PoaManager: React.FC<PoaManagerProps> = ({
 
   // Generar meses abreviados con año, filtrados por rango de fechas
   const getMesesAnioActualAbreviados = (fechaInicio: Date | null, fechaTermino: Date | null): { label: string; value: string }[] => {
-    const currentYear = new Date().getFullYear();
-    const mesesAbreviados = [
-      'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-      'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
-    ];
-    
-    const todosLosMeses = mesesAbreviados.map((mes, index) => ({
-      label: `${mes} ${currentYear}`,
-      value: `${currentYear}-${String(index + 1).padStart(2, '0')}`,
-      mesIndex: index
-    }));
+    if (!fechaInicio || !fechaTermino || fechaInicio > fechaTermino) return [];
 
-    // Si no hay fechas definidas, mostrar todos los meses
-    if (!fechaInicio || !fechaTermino) {
-      return todosLosMeses;
+    const meses = [];
+    const current = new Date(fechaInicio.getFullYear(), fechaInicio.getMonth(), 1);
+
+    while (current <= fechaTermino) {
+      const year = current.getFullYear();
+      const month = String(current.getMonth() + 1).padStart(2, '0');
+      const monthName = current.toLocaleString('es-ES', { month: 'short' }).replace('.', '');
+      const label = `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`;
+      meses.push({ label, value: `${year}-${month}` });
+      current.setMonth(current.getMonth() + 1);
     }
 
-    // Filtrar meses dentro del rango
-    const inicio = new Date(fechaInicio);
-    const termino = new Date(fechaTermino);
-    
-    return todosLosMeses.filter(mes => {
-      const mesInicio = new Date(currentYear, mes.mesIndex, 1);
-      const mesFin = new Date(currentYear, mes.mesIndex + 1, 0);
-      
-      // El mes está dentro del rango si:
-      // - El inicio del mes está antes o igual al término
-      // - El fin del mes está después o igual al inicio
-      return mesInicio <= termino && mesFin >= inicio;
-    });
-  }; 
+    return meses;
+  };
 
   const handleAddActividad = () => {
     // Crear actividad temporal para edición inline
@@ -581,7 +596,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
     }
 
     try {
-     
+
       // Preparar datos para validación
       const actividadData = {
         descripcion: tempActividadText.trim(),
@@ -664,18 +679,18 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       );
       // Asumir que la respuesta es un array de subactividades
       const subactividades = Array.isArray(response) ? response : [];
-      
+
       // Actualizar las subactividades de la actividad específica
-      setActividades(prev => prev.map(act => 
-        act.id === actividadId 
+      setActividades(prev => prev.map(act =>
+        act.id === actividadId
           ? { ...act, subactividades }
           : act
       ));
     } catch (error) {
       show({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar las subactividades' });
       // En caso de error, limpiar las subactividades de la actividad específica
-      setActividades(prev => prev.map(act => 
-        act.id === actividadId 
+      setActividades(prev => prev.map(act =>
+        act.id === actividadId
           ? { ...act, subactividades: [] }
           : act
       ));
@@ -693,7 +708,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
   const handleSaveSubactividad = async (subactividadData: any) => {
 
     if (!selectedActividadId || !poaData?.id) return;
- 
+
     try {
       if (isCreatingSubactividad) {
         const newSubactividad = await ProyectoService.createSubactividadPorActividadId(
@@ -703,10 +718,10 @@ const PoaManager: React.FC<PoaManagerProps> = ({
           subactividadData
         );
         // Agregar la nueva subactividad a la actividad específica
-        setActividades(prev => prev.map(act => 
-          act.id === selectedActividadId 
-            ? { 
-                ...act, 
+        setActividades(prev => prev.map(act =>
+          act.id === selectedActividadId
+            ? {
+                ...act,
                 subactividades: [...act.subactividades, newSubactividad],
                 totalSubactividades: act.totalSubactividades + 1
               }
@@ -722,12 +737,12 @@ const PoaManager: React.FC<PoaManagerProps> = ({
           subactividadData
         );
         // Actualizar la subactividad en la actividad específica
-        setActividades(prev => prev.map(act => 
-          act.id === selectedActividadId 
-            ? { 
-                ...act, 
-                subactividades: act.subactividades.map(sub => 
-                  sub.id === editingSubactividadData.id 
+        setActividades(prev => prev.map(act =>
+          act.id === selectedActividadId
+            ? {
+                ...act,
+                subactividades: act.subactividades.map(sub =>
+                  sub.id === editingSubactividadData.id
                     ? { ...sub, ...subactividadData }
                     : sub
                 )
@@ -736,7 +751,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
         ));
         show({ severity: 'success', summary: 'Éxito', detail: 'Subactividad actualizada exitosamente' });
       }
-      
+
       setSidebarSubactividadVisible(false);
     } catch (error: any) {
       const errorMessage = formatApiError(error);
@@ -764,10 +779,10 @@ const PoaManager: React.FC<PoaManagerProps> = ({
             subactividadId
           );
           // Eliminar la subactividad de la actividad específica y decrementar contador
-          setActividades(prev => prev.map(act => 
-            act.id === selectedActividadId 
-              ? { 
-                  ...act, 
+          setActividades(prev => prev.map(act =>
+            act.id === selectedActividadId
+              ? {
+                  ...act,
                   subactividades: act.subactividades.filter(sub => sub.id !== subactividadId),
                   totalSubactividades: Math.max(0, act.totalSubactividades - 1)
                 }
@@ -798,7 +813,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
   };
 
   const updateActividadField = (actividadId: number, field: keyof ActividadUI, value: any) => {
-    setActividades(prev => prev.map(act => 
+    setActividades(prev => prev.map(act =>
       act.id === actividadId ? { ...act, [field]: value } : act
     ));
   };
@@ -811,21 +826,21 @@ const PoaManager: React.FC<PoaManagerProps> = ({
           subactividades: act.subactividades.map(sub => {
             if (sub.id === subactividadId) {
               const updated = { ...sub, [field]: value };
-              
+
               // Si cambian las fechas, filtrar los meses contemplados que ya no estén en el rango
               if (field === 'fecha_inicio' || field === 'fecha_termino') {
                 const mesesAnteriores = sub.meses_reporte;
-                
+
                 if (updated.fecha_inicio && updated.fecha_termino) {
                   // Convertir fechas string a Date para comparación
                   const fechaInicio = new Date(updated.fecha_inicio);
                   const fechaTermino = new Date(updated.fecha_termino);
-                  
+
                   if (fechaInicio <= fechaTermino) {
                     // Fechas válidas: filtrar meses que estén dentro del rango
                     const mesesValidos = getMesesAnioActualAbreviados(fechaInicio, fechaTermino).map(m => m.value);
                     updated.meses_reporte = updated.meses_reporte.filter((mes: string) => mesesValidos.includes(mes));
-                    
+
                     // Notificar si se eliminaron meses
                     const mesesEliminados = mesesAnteriores.filter((mes: string) => !updated.meses_reporte.includes(mes));
                     if (mesesEliminados.length > 0) {
@@ -840,7 +855,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                 } else {
                   // Fechas inválidas o incompletas: limpiar todos los meses
                   updated.meses_reporte = [];
-                  
+
                   if (mesesAnteriores.length > 0) {
                     show({
                       severity: 'info',
@@ -851,7 +866,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                   }
                 }
               }
-              
+
               return updated;
             }
             return sub;
@@ -882,7 +897,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
 
   const handleGuardarObservaciones = async (observacionesActualizadas: Observacion[]) => {
     const todasResueltas = observacionesActualizadas.every(obs => obs.resuelta);
-    
+
     if (todasResueltas) {
       try {
         await handleResolverObservaciones(projectUuid);
@@ -904,7 +919,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
     const actividad = actividades.find(act => act.id === actividadId);
     const willExpand = !actividad?.expandido;
 
-    setActividades(prev => prev.map(act => 
+    setActividades(prev => prev.map(act =>
       act.id === actividadId ? { ...act, expandido: willExpand } : act
     ));
 
@@ -1133,12 +1148,12 @@ const PoaManager: React.FC<PoaManagerProps> = ({
               return (
                 <div key={actividad.id} style={{ width: '100%' }}>
                   {/* Fila de Actividad - Desktop */}
-                  <div 
+                  <div
                     className="px-2 py-1 hover:surface-100 transition-colors transition-duration-150 hidden md:block"
                     style={{ backgroundColor: actIndex % 2 === 0 ? 'var(--surface-0)' : 'var(--surface-50)' }}
                   >
-                    <div style={{ 
-                      display: 'grid', 
+                    <div style={{
+                      display: 'grid',
                       gridTemplateColumns: '36px minmax(300px, 500px) minmax(140px, 200px) 1fr 60px',
                       gap: '0.5rem',
                       alignItems: 'center'
@@ -1203,8 +1218,8 @@ const PoaManager: React.FC<PoaManagerProps> = ({
 
                       {/* Badge de subactividades */}
                       <div className="flex align-items-center gap-2">
-                        <Badge 
-                          value={actividad.totalSubactividades} 
+                        <Badge
+                          value={actividad.totalSubactividades}
                           severity="info"
                           className="text-xs"
                         />
@@ -1271,7 +1286,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                   </div>
 
                   {/* Fila de Actividad - Mobile */}
-                  <div 
+                  <div
                     className="p-3 border-bottom-1 surface-border hover:surface-100 transition-colors transition-duration-150 block md:hidden"
                     style={{ backgroundColor: actIndex % 2 === 0 ? 'var(--surface-0)' : 'var(--surface-50)' }}
                   >
@@ -1285,8 +1300,8 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                             style={{ width: '1.75rem', height: '1.75rem' }}
                             onClick={() => toggleExpand(actividad.id)}
                           />
-                          <Badge 
-                            value={actividad.totalSubactividades} 
+                          <Badge
+                            value={actividad.totalSubactividades}
                             severity="info"
                             className="text-xs"
                           />
@@ -1421,7 +1436,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                                 disabled={readOnly}
                               />
                             </div>
-                            
+
                             {/* Mobile button */}
                             <div className="block md:hidden">
                               <Button
@@ -1448,14 +1463,14 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                           </div>
                         ) : (
                           actividad.subactividades.map((subactividad: SubactividadPoaApi, subIndex: number) => (
-                            <div 
+                            <div
                               key={subactividad.id}
                               className="px-3 py-3 border-bottom-1 surface-border hover:surface-50 transition-colors transition-duration-150"
                             >
                               <div className="grid" style={{ gridTemplateColumns: 'auto 1fr auto auto', gap: '1rem', alignItems: 'center' }}>
                                 {/* Número de subactividad */}
                                 <div className="flex align-items-center justify-content-center">
-                                  <div className="border-circle bg-primary text-0 font-semibold" 
+                                  <div className="border-circle bg-primary text-0 font-semibold"
                                        style={{ width: '2rem', height: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}>
                                     {subIndex + 1}
                                   </div>
@@ -1464,8 +1479,8 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                                 {/* Información de subactividad */}
                                 <div className="flex flex-column gap-1">
                                   <div className="text-900 font-medium">
-                                    {subactividad.descripcion.length > 80 
-                                      ? `${subactividad.descripcion.substring(0, 80)}...` 
+                                    {subactividad.descripcion.length > 80
+                                      ? `${subactividad.descripcion.substring(0, 80)}...`
                                       : subactividad.descripcion}
                                   </div>
                                   <div className="flex align-items-center gap-3 text-sm">
@@ -1482,8 +1497,8 @@ const PoaManager: React.FC<PoaManagerProps> = ({
 
                                 {/* Estado */}
                                 <div>
-                                  <Badge 
-                                    value={subactividad.estatus} 
+                                  <Badge
+                                    value={subactividad.estatus}
                                     severity={subactividad.estatus === 'Validada' ? 'success' : 'warning'}
                                     className="text-xs"
                                   />
@@ -1527,7 +1542,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
           />
         </div>
       )}
-      
+
       {/* Sidebar integrado para edición de subactividades */}
       <SubactividadSidebar
         visible={sidebarSubactividadVisible}
@@ -1541,7 +1556,7 @@ const PoaManager: React.FC<PoaManagerProps> = ({
         poaId={poaData?.id || null}
         projectUuid={projectUuid}
       />
-      
+
       {/* Dialog para observaciones */}
       <ObservacionDialog
         visible={showObservacionDialog}

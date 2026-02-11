@@ -67,7 +67,7 @@ const ProyectoWizard: React.FC<ProyectoWizardProps> = ({
     uuid: project?.uuid || undefined,
     codigo: project?.codigo || '',
     nombre: project?.nombre || '',
-    descripcion: project?.descripcion || '',
+    //descripcion: project?.descripcion || '', se elimina descripción del formulario general
     prioridad: project?.prioridad as Prioridad || Prioridad.MEDIA,
     ejercicio_id: selectedEjercicioFiscal || 0,
     unidad_id: project?.unidad?.id || null,

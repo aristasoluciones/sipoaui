@@ -268,23 +268,7 @@ const ProyectoStageGeneralSidebar: React.FC<ProyectoStageGeneralSidebarProps> = 
             )}
           </div>
 
-          <div className="field">
-            <label htmlFor="descripcion" className="block font-medium text-900 mb-2">
-              Descripción
-            </label>
-            <InputTextarea
-              id="descripcion"
-              value={formData.descripcion || ''}
-              onChange={(e) => handleInputChange('descripcion', e.target.value)}
-              className={`w-full ${validationErrors.descripcion ? 'p-invalid' : ''}`}
-              placeholder="Ingrese una descripción del proyecto"
-              rows={3}
-              maxLength={500}
-            />
-            {validationErrors.descripcion && (
-              <small className="p-error">{validationErrors.descripcion}</small>
-            )}
-          </div>
+          {/* Se elimina campo descripción del formulario general*/}
         </div>
 
         {/* Footer del sidebar */}

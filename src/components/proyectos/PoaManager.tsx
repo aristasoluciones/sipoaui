@@ -989,6 +989,13 @@ const PoaManager: React.FC<PoaManagerProps> = ({
     return new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: '2-digit', year: '2-digit' }).format(date);
   };
 
+  // Calcular total de subactividades de todas las actividades
+  const totalSubactividades = useMemo(() => {
+    return actividades.reduce((total: number, actividad: ActividadUI) => {
+      return total + (actividad.totalSubactividades || 0);
+    }, 0);
+  }, [actividades]);
+
   // Función para renderizar el header del DataView con acciones y columnas
   const renderDataViewHeader = () => (
     <>
@@ -1023,6 +1030,9 @@ const PoaManager: React.FC<PoaManagerProps> = ({
                 icon="pi pi-send"
                 onClick={onSolicitarRevision}
                 loading={solicitandoRevision}
+                disabled={totalSubactividades === 0}  // Deshabilita si no hay subactividades
+                tooltip={totalSubactividades === 0 ? 'Debe agregar al menos una subactividad para poder solicitar revisión' : ''}
+                tooltipOptions={{ position: 'bottom' }}
                 className="p-button-outlined"
               />
             )}
@@ -1057,10 +1067,13 @@ const PoaManager: React.FC<PoaManagerProps> = ({
             {onSolicitarRevision && actividadesProp.length > 0 && !readOnly && (
               <Button
                 icon="pi pi-send"
-                tooltip="Solicitar Revisión"
+                tooltip={totalSubactividades === 0
+                  ? 'Debe agregar al menos una subactividad para poder solicitar revisión'
+                  : 'Solicitar Revisión'}
                 tooltipOptions={{ position: 'bottom' }}
                 onClick={onSolicitarRevision}
                 loading={solicitandoRevision}
+                disabled={totalSubactividades === 0}  // Deshabilitar si no hay subactividades
                 className="p-button-outlined p-button-sm"
               />
             )}

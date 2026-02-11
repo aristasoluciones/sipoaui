@@ -160,12 +160,7 @@ const ProyectoStageGeneralView: React.FC<ProyectoStageGeneralViewProps> = ({
               </div>
 
               {/* Descripción */}
-              <div className="bg-blue-50 border-round p-2 border-1 border-blue-200">
-                <label className="block font-medium text-700 mb-2">Descripción</label>
-                <div className="text-900 text-lg">
-                  {project.descripcion || 'Sin descripción'}
-                </div>
-              </div>
+              
 
               {/* Unidad Responsable */}
               <div className="bg-blue-50 border-round p-2 border-1 border-blue-200">

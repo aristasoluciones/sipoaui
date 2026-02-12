@@ -34,8 +34,8 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
   // Valores iniciales por defecto
   const defaultInitialValues: DiagnosticoData = {
     diagnostico: '',
-    efectos: '',
-    fines: '',
+    efectos: [''],
+    fines: [''],
     poblacionAfectada: '',
     descripcionProblema: '',
     magnitudLineaBase: '',
@@ -77,12 +77,14 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
     diagnostico: Yup.string()
       .required('El diagnóstico es obligatorio')
       .min(10, 'El diagnóstico debe tener al menos 10 caracteres'),
-    efectos: Yup.string()
-      .required('Los efectos son obligatorios')
-      .min(10, 'Los efectos deben tener al menos 10 caracteres'),
-    fines: Yup.string()
-      .required('Los fines son obligatorios')
-      .min(10, 'Los fines deben tener al menos 10 caracteres'),
+    efectos: Yup.array()
+      .of(Yup.string().required('Los efectos son obligatorios'))
+      .min(1, 'Debe agregar al menos un efecto')
+      .required('Los efectos son obligatorios'),      
+    fines: Yup.array()
+      .of(Yup.string().required('Los fines son obligatorios'))
+      .min(1, 'Debe agregar al menos un fin')
+      .required('Los fines son obligatorios'),     
     poblacionAfectada: Yup.string()
       .required('La población afectada es obligatoria'),
     descripcionProblema: Yup.string()
@@ -274,62 +276,122 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
                   </div>
                 </fieldset>
 
-                {/* Sección: Problemática vs Solución */}
-                <div className="grid">
-                  <div className="col-12 md:col-6">
-                    <fieldset className="h-full border-1 border-round surface-border surface-card">
-                      <legend className="text-900 font-medium px-3 mb-3 flex align-items-center gap-2">
-                        <Badge value="P" severity="danger" />
-                        Problemática
-                      </legend>
-                      <div className="field px-2 pb-2">
-                        <label htmlFor="efectos" className="block text-900 font-medium mb-2">
-                          Efectos *
-                        </label>
-                        <Field name="efectos">
-                          {({ field }: any) => (
-                            <InputTextarea
-                              {...field}
-                              id="efectos"
-                              rows={8}
-                              readOnly={hasDiagnosticoSaved && !isEditing}
-                              className={`w-full ${errors.efectos && touched.efectos ? 'p-invalid' : ''}`}
-                              placeholder="Describe los efectos del problema..."
-                            />
-                          )}
-                        </Field>
-                        <ErrorMessage name="efectos" component="small" className="p-error block mt-1" />
-                      </div>
-                    </fieldset>
-                  </div>
+                  {/* Sección: Problemática vs Solución */}
+                  <div className="grid">
+                    <div className="col-12 md:col-6">
+                      <fieldset className="h-full border-1 border-round surface-border surface-card">
+                        <legend className="text-900 font-medium px-3 mb-3 flex align-items-center gap-2">
+                          <Badge value="P" severity="danger" />
+                          Problemática
+                        </legend>
+                        <div className="field px-2 pb-2">
+                          <label className="block text-900 font-medium mb-2">
+                            Efectos *
+                          </label>
+                          <FieldArray name="efectos">
+                            {({ push, remove }) => (
+                              <div>
+                                {values.efectos.map((efecto: string, index: number) => (
+                                  <div key={index} className="flex align-items-center gap-2 mb-2">
+                                    <Field name={`efectos.${index}`}>
+                                      {({ field }: any) => (
+                                        <InputTextarea
+                                          {...field}
+                                          rows={3}
+                                          readOnly={hasDiagnosticoSaved && !isEditing}
+                                          className={`flex-1 ${(errors as any).efectos?.[index] && (touched as any).efectos?.[index] ? 'p-invalid' : ''}`}
+                                          placeholder={`Efecto ${index + 1}...`}
+                                        />
+                                      )}
+                                    </Field>
+                                    {values.efectos.length > 1 && (
+                                      <button
+                                        type="button"
+                                        className="p-button p-button-danger p-button-sm"
+                                        onClick={() => remove(index)}
+                                        disabled={hasDiagnosticoSaved && !isEditing}
+                                      >
+                                        <i className="pi pi-minus"></i>
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                                <button
+                                  type="button"
+                                  className="p-button p-button-secondary p-button-sm mt-2"
+                                  onClick={() => push('')}
+                                  disabled={hasDiagnosticoSaved && !isEditing}
+                                >
+                                  <i className="pi pi-plus mr-2"></i>
+                                  Agregar Efecto
+                                </button>
+                                {errors.efectos && typeof errors.efectos === 'string' && (
+                                  <small className="p-error block mt-1">{errors.efectos}</small>
+                                )}
+                              </div>
+                            )}
+                          </FieldArray>
+                        </div>
+                      </fieldset>
+                    </div>
 
-                  <div className="col-12 md:col-6">
-                    <fieldset className="h-full border-1 border-round surface-border surface-card">
-                      <legend className="text-900 font-medium px-3 mb-3 flex align-items-center gap-2">
-                        <Badge value="S" severity="success" />
-                        Solución
-                      </legend>
-                      <div className="field px-2 pb-2">
-                        <label htmlFor="fines" className="block text-900 font-medium mb-2">
-                          Fines *
-                        </label>
-                        <Field name="fines">
-                          {({ field }: any) => (
-                            <InputTextarea
-                              {...field}
-                              id="fines"
-                              rows={8}
-                              readOnly={hasDiagnosticoSaved && !isEditing}
-                              className={`w-full ${errors.fines && touched.fines ? 'p-invalid' : ''}`}
-                              placeholder="Describe los fines de la solución..."
-                            />
-                          )}
-                        </Field>
-                        <ErrorMessage name="fines" component="small" className="p-error block mt-1" />
-                      </div>
-                    </fieldset>
+                    <div className="col-12 md:col-6">
+                      <fieldset className="h-full border-1 border-round surface-border surface-card">
+                        <legend className="text-900 font-medium px-3 mb-3 flex align-items-center gap-2">
+                          <Badge value="S" severity="success" />
+                          Solución
+                        </legend>
+                        <div className="field px-2 pb-2">
+                          <label className="block text-900 font-medium mb-2">
+                            Fines *
+                          </label>
+                          <FieldArray name="fines">
+                            {({ push, remove }) => (
+                              <div>
+                                {values.fines.map((fin: string, index: number) => (
+                                  <div key={index} className="flex align-items-center gap-2 mb-2">
+                                    <Field name={`fines.${index}`}>
+                                      {({ field }: any) => (
+                                        <InputTextarea
+                                          {...field}
+                                          rows={3}
+                                          readOnly={hasDiagnosticoSaved && !isEditing}
+                                          className={`flex-1 ${(errors as any).fines?.[index] && (touched as any).fines?.[index] ? 'p-invalid' : ''}`}
+                                          placeholder={`Fin ${index + 1}...`}
+                                        />
+                                      )}
+                                    </Field>
+                                    {values.fines.length > 1 && (
+                                      <button
+                                        type="button"
+                                        className="p-button p-button-danger p-button-sm"
+                                        onClick={() => remove(index)}
+                                        disabled={hasDiagnosticoSaved && !isEditing}
+                                      >
+                                        <i className="pi pi-minus"></i>
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                                <button
+                                  type="button"
+                                  className="p-button p-button-secondary p-button-sm mt-2"
+                                  onClick={() => push('')}
+                                  disabled={hasDiagnosticoSaved && !isEditing}
+                                >
+                                  <i className="pi pi-plus mr-2"></i>
+                                  Agregar Fin
+                                </button>
+                                {errors.fines && typeof errors.fines === 'string' && (
+                                  <small className="p-error block mt-1">{errors.fines}</small>
+                                )}
+                              </div>
+                            )}
+                          </FieldArray>
+                        </div>
+                      </fieldset>
+                    </div>
                   </div>
-                </div>
 
                 {/* Sección: Problema Central vs Objetivo */}
                 <div className="grid mt-4">

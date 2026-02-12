@@ -195,8 +195,8 @@ export interface DiagnosticoApi {
 // Formulario de Diagnóstico (para el componente de captura)
 export interface DiagnosticoData {
   diagnostico: string;
-  efectos: string;
-  fines: string;
+  efectos: string[];
+  fines: string[];
   poblacionAfectada: string;
   poblacionObjetivo: string;
   descripcionProblema: string;

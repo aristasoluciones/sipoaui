@@ -998,7 +998,11 @@ const PoaManager: React.FC<PoaManagerProps> = ({
 
     } catch (error: any) {
       if (error.name === 'ValidationError') {
-        show({ severity: 'error', summary: 'Error de validación', detail: error.message });
+        const detail =
+          Array.isArray((error as any).errors) && (error as any).errors.length > 0
+            ? (error as any).errors.join('. ')
+            : error.message;
+        show({ severity: 'error', summary: 'Error de validación', detail });
       } else {
         // El error ya se maneja en el padre
         console.error('Error al actualizar actividad:', error);

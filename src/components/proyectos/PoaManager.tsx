@@ -805,9 +805,17 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       acceptLabel: 'Sí, eliminar',
       rejectLabel: 'Cancelar',
       acceptClassName: 'p-button-danger',
-      accept: () => {
-        setActividades(prev => prev.filter(act => act.id !== actividadId));
-        show({ severity: 'success', summary: 'Eliminado', detail: 'Actividad eliminada' });
+      accept: async () => {
+        try {
+          // Llamar al callback del padre que hace la petición al servidor
+          await onDeleteActividad?.(actividadId);
+
+          // Actualizar estado local después de eliminar en el servidor
+          setActividades(prev => prev.filter(act => act.id !== actividadId));
+        } catch (error) {
+          // El error ya se maneja en el padre
+          console.error('Error al eliminar actividad:', error);
+        }
       }
     });
   };
@@ -957,15 +965,29 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       // Validar campos
       if (!tempActividadText.trim()) {
         show({ severity: 'warn', summary: 'Campo requerido', detail: 'La descripción de la actividad es obligatoria' });
+        setIsSavingRow(false);
         return;
       }
 
       if (!tempTipoActividad) {
         show({ severity: 'warn', summary: 'Campo requerido', detail: 'El tipo de actividad es obligatorio' });
+        setIsSavingRow(false);
         return;
       }
 
-      // Actualizar la actividad
+      // Preparar datos para el servidor
+      const actividadData = {
+        descripcion: tempActividadText.trim(),
+        tipo_actividad_id: parseInt(tempTipoActividad)
+      };
+
+      // Validar con Yup
+      await actividadSchema.validate(actividadData, { abortEarly: false });
+
+      // Actualizar en el servidor primero
+      await onUpdateActividad?.(editingRowId, actividadData);
+
+      // Actualizar el estado local después de guardar en el servidor
       updateActividadField(editingRowId, 'descripcion', tempActividadText.trim());
       // Para el tipo de actividad, necesitamos encontrar el objeto TipoActividad completo
       const tipoActividadSeleccionado = tiposActividad.find(t => t.id.toString() === tempTipoActividad);
@@ -977,9 +999,13 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       setTempActividadText('');
       setTempTipoActividad(null);
 
-      show({ severity: 'success', summary: 'Éxito', detail: 'Actividad actualizada exitosamente' });
-    } catch (error) {
-      show({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar la actividad' });
+    } catch (error: any) {
+      if (error.name === 'ValidationError') {
+        show({ severity: 'error', summary: 'Error de validación', detail: error.message });
+      } else {
+        // El error ya se maneja en el padre
+        console.error('Error al actualizar actividad:', error);
+      }
     } finally {
       setIsSavingRow(false); // Desactivar indicador de guardado
     }

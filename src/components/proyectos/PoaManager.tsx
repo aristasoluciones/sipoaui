@@ -964,13 +964,11 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       // Validar campos
       if (!tempActividadText.trim()) {
         show({ severity: 'warn', summary: 'Campo requerido', detail: 'La descripción de la actividad es obligatoria' });
-        setIsSavingRow(false);
         return;
       }
 
       if (!tempTipoActividad) {
         show({ severity: 'warn', summary: 'Campo requerido', detail: 'El tipo de actividad es obligatorio' });
-        setIsSavingRow(false);
         return;
       }
 

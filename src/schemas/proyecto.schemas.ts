@@ -17,7 +17,8 @@ export const proyectoInformacionGeneralSchema = yup.object().shape({
     .trim('El nombre no puede tener espacios al inicio o final')
     .min(3, 'El nombre debe tener al menos 3 caracteres'),
 
-  descripcion: yup
+  //Se deja la descripción como campo opcional
+    descripcion: yup
     .string()
     .max(500, 'La descripción no puede tener más de 500 caracteres')
     .notRequired(),

@@ -108,14 +108,6 @@ export const CATALOGOS_CONFIG: CatalogoConfig[] = [
     columns: [
       { field: 'nombre', header: 'Nombre', sortable: true, filterable: true, type: 'text' },
       { field: 'descripcion', header: 'Descripción', sortable: false, filterable: false, type: 'textarea' },
-      { field: 'formato', header: 'Formato', sortable: false, filterable: false, type: 'select',
-        options: [
-          { label: 'Word', value: 'word' }, 
-          { label: 'Excel', value: 'excel' }, 
-          { label: 'Pdf', value: 'pdf' },
-          { label: 'Imagen', value: 'imagen' }
-        ] 
-       },
       { field: 'estado', header: 'Estado', sortable: false, filterable: false, type: 'select',
         options: [{ label: 'Activo', value: 'Activo' }, { label: 'Inactivo', value: 'Inactivo' }] }
     ],

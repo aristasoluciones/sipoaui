@@ -807,13 +807,12 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       acceptClassName: 'p-button-danger',
       accept: async () => {
         try {
-          // Llamar al callback del padre que hace la petición al servidor
+          // Llamar al callback del padre que hace la petición al servidor.
+          // El estado local de actividades se actualizará a partir de las props
+          // cuando la operación en el servidor realmente tenga éxito.
           await onDeleteActividad?.(actividadId);
-
-          // Actualizar estado local después de eliminar en el servidor
-          setActividades(prev => prev.filter(act => act.id !== actividadId));
         } catch (error) {
-          // El error ya se maneja en el padre
+          // El error ya se maneja en el padre; aquí solo registramos para depuración.
           console.error('Error al eliminar actividad:', error);
         }
       }

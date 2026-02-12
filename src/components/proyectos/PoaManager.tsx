@@ -805,9 +805,16 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       acceptLabel: 'Sí, eliminar',
       rejectLabel: 'Cancelar',
       acceptClassName: 'p-button-danger',
-      accept: () => {
-        setActividades(prev => prev.filter(act => act.id !== actividadId));
-        show({ severity: 'success', summary: 'Eliminado', detail: 'Actividad eliminada' });
+      accept: async () => {
+        try {
+          // Llamar al callback del padre que hace la petición al servidor.
+          // El estado local de actividades se actualizará a partir de las props
+          // cuando la operación en el servidor realmente tenga éxito.
+          await onDeleteActividad?.(actividadId);
+        } catch (error) {
+          // El error ya se maneja en el padre; aquí solo registramos para depuración.
+          console.error('Error al eliminar actividad:', error);
+        }
       }
     });
   };
@@ -965,7 +972,19 @@ const PoaManager: React.FC<PoaManagerProps> = ({
         return;
       }
 
-      // Actualizar la actividad
+      // Preparar datos para el servidor
+      const actividadData = {
+        descripcion: tempActividadText.trim(),
+        tipo_actividad_id: parseInt(tempTipoActividad)
+      };
+
+      // Validar con Yup
+      await actividadSchema.validate(actividadData, { abortEarly: false });
+
+      // Actualizar en el servidor primero
+      await onUpdateActividad?.(editingRowId, actividadData);
+
+      // Actualizar el estado local después de guardar en el servidor
       updateActividadField(editingRowId, 'descripcion', tempActividadText.trim());
       // Para el tipo de actividad, necesitamos encontrar el objeto TipoActividad completo
       const tipoActividadSeleccionado = tiposActividad.find(t => t.id.toString() === tempTipoActividad);
@@ -977,9 +996,17 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       setTempActividadText('');
       setTempTipoActividad(null);
 
-      show({ severity: 'success', summary: 'Éxito', detail: 'Actividad actualizada exitosamente' });
-    } catch (error) {
-      show({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar la actividad' });
+    } catch (error: any) {
+      if (error.name === 'ValidationError') {
+        const detail =
+          Array.isArray((error as any).errors) && (error as any).errors.length > 0
+            ? (error as any).errors.join('. ')
+            : error.message;
+        show({ severity: 'error', summary: 'Error de validación', detail });
+      } else {
+        // El error ya se maneja en el padre
+        console.error('Error al actualizar actividad:', error);
+      }
     } finally {
       setIsSavingRow(false); // Desactivar indicador de guardado
     }

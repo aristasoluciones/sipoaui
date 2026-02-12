@@ -181,8 +181,8 @@ export interface DiagnosticoProblema {
 
 export interface DiagnosticoApi {
   diagnostico: string;
-  efectos: string;
-  fines: string;
+  efectos: string[];
+  fines: string[];
   poblacion_afectada: string;
   poblacion_objetivo: string;
   descripcion_problema: string;

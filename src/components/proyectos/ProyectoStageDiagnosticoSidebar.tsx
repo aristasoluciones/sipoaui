@@ -246,11 +246,13 @@ const ProyectoStageDiagnosticoSidebar: React.FC<ProyectoStageDiagnosticoSidebarP
             innerRef={formikRef}
           >
             {({ values, errors, touched, isValid, dirty }) => {
-              // Actualizar el estado de validación del formulario
-              if (isFormValidRef.current !== isValid) {
-                isFormValidRef.current = isValid;
-                setIsFormValid(isValid);
-              }
+              // ✅ Usar useEffect para actualizar el estado
+              useEffect(() => {
+                if (isFormValidRef.current !== isValid) {
+                  isFormValidRef.current = isValid;
+                  setIsFormValid(isValid);
+                }
+              }, [isValid]);
 
               return (
                 <Form>

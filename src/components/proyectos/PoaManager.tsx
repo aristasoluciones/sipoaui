@@ -122,11 +122,17 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
   useEffect(() => {
     if (visible) {
       if (subactividad && !isCreating) {
+        // Corregir desfase de fechas por zona horaria
+        const parseFecha = (fechaStr: string) => {
+          if (!fechaStr) return null;
+          const [year, month, day] = fechaStr.split('-');
+          return new Date(Number(year), Number(month) - 1, Number(day));
+        };
         setFormData({
           descripcion: subactividad.descripcion,
           tipo_actividad_id: subactividad.tipo_actividad.id,
-          fecha_inicio: new Date(subactividad.fecha_inicio),
-          fecha_termino: new Date(subactividad.fecha_termino),
+          fecha_inicio: parseFecha(subactividad.fecha_inicio),
+          fecha_termino: parseFecha(subactividad.fecha_termino),
           entregable_id: subactividad?.entregable.id,
           meses_reporte: subactividad.meses_reporte
         });
@@ -168,15 +174,46 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
     setIsSaving(true);
     setValidationErrors({});
 
+    // Obtener los valores más recientes de los inputs (por si el estado no se actualizó a tiempo)
+    const form = formRef.current;
+    let fecha_inicio = formData.fecha_inicio;
+    let fecha_termino = formData.fecha_termino;
+    if (form) {
+      const fechaInicioInput = form.querySelector('#fecha_inicio');
+      const fechaTerminoInput = form.querySelector('#fecha_termino');
+      if (fechaInicioInput && (fechaInicioInput as any).value) {
+        const val = (fechaInicioInput as any).value;
+        // Formato dd/mm/yy
+        const [day, month, year] = val.split('/');
+        // monthIndex es base 0
+        fecha_inicio = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      }
+      if (fechaTerminoInput && (fechaTerminoInput as any).value) {
+        const val = (fechaTerminoInput as any).value;
+        const [day, month, year] = val.split('/');
+        fecha_termino = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      }
+    }
+
     try {
-      // Validar con Yup
-      await subactividadSchema.validate(formData, { abortEarly: false });
+      // Validar con Yup usando las fechas corregidas
+      await subactividadSchema.validate({ ...formData, fecha_inicio, fecha_termino }, { abortEarly: false });
+
+      // Validación extra para evitar null en fechas
+      if (!fecha_inicio || !fecha_termino) {
+        setValidationErrors({
+          ...(fecha_inicio ? {} : { fecha_inicio: 'La fecha de inicio es obligatoria' }),
+          ...(fecha_termino ? {} : { fecha_termino: 'La fecha de término es obligatoria' })
+        });
+        setIsSaving(false);
+        return;
+      }
 
       const dataToSend = {
         descripcion: formData.descripcion,
         tipo_actividad_id: formData.tipo_actividad_id,
-        fecha_inicio: formData.fecha_inicio?.toISOString().split('T')[0],
-        fecha_termino: formData.fecha_termino?.toISOString().split('T')[0],
+        fecha_inicio: fecha_inicio.toISOString().split('T')[0],
+        fecha_termino: fecha_termino.toISOString().split('T')[0],
         entregable_id: formData.entregable_id,
         meses_reporte: formData.meses_reporte
       };
@@ -518,12 +555,8 @@ const PoaManager: React.FC<PoaManagerProps> = ({
     showSuccessMessages: true
   });
 
-  useEffect(() => {
-    // Cargar actividades desde props
-    loadActividadesFromProps();
-  }, [actividadesProp]);
 
-  const loadActividadesFromProps = () => {
+  const loadActividadesFromProps = React.useCallback(() => {
     // Convertir ActividadPoaApi[] a ActividadUI[]
     const convertedActividades: ActividadUI[] = actividadesProp.map(apiAct => ({
       id: apiAct.id,
@@ -544,7 +577,12 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       totalSubactividades: apiAct.total_subactividades // Usar el campo de la API
     }));
     setActividades(convertedActividades);
-  };
+  }, [actividadesProp]);
+
+  useEffect(() => {
+    // Cargar actividades desde props
+    loadActividadesFromProps();
+  }, [actividadesProp, loadActividadesFromProps]);
 
   // Generar meses abreviados con año, filtrados por rango de fechas
   const getMesesAnioActualAbreviados = (fechaInicio: Date | null, fechaTermino: Date | null): { label: string; value: string }[] => {

@@ -208,7 +208,6 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
         meses_reporte: formData.meses_reporte
       };
 
-      console.log('Payload enviado a onSave:', dataToSend);
       await onSave(dataToSend);
     } catch (error: any) {
       if (error.name === 'ValidationError') {

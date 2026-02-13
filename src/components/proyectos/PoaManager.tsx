@@ -199,6 +199,16 @@ const SubactividadSidebar: React.FC<SubactividadSidebarProps> = ({
       // Validar con Yup usando las fechas corregidas
       await subactividadSchema.validate({ ...formData, fecha_inicio, fecha_termino }, { abortEarly: false });
 
+      // Validación extra para evitar null en fechas
+      if (!fecha_inicio || !fecha_termino) {
+        setValidationErrors({
+          ...(fecha_inicio ? {} : { fecha_inicio: 'La fecha de inicio es obligatoria' }),
+          ...(fecha_termino ? {} : { fecha_termino: 'La fecha de término es obligatoria' })
+        });
+        setIsSaving(false);
+        return;
+      }
+
       const dataToSend = {
         descripcion: formData.descripcion,
         tipo_actividad_id: formData.tipo_actividad_id,
@@ -545,12 +555,8 @@ const PoaManager: React.FC<PoaManagerProps> = ({
     showSuccessMessages: true
   });
 
-  useEffect(() => {
-    // Cargar actividades desde props
-    loadActividadesFromProps();
-  }, [actividadesProp]);
 
-  const loadActividadesFromProps = () => {
+  const loadActividadesFromProps = React.useCallback(() => {
     // Convertir ActividadPoaApi[] a ActividadUI[]
     const convertedActividades: ActividadUI[] = actividadesProp.map(apiAct => ({
       id: apiAct.id,
@@ -571,7 +577,12 @@ const PoaManager: React.FC<PoaManagerProps> = ({
       totalSubactividades: apiAct.total_subactividades // Usar el campo de la API
     }));
     setActividades(convertedActividades);
-  };
+  }, [actividadesProp]);
+
+  useEffect(() => {
+    // Cargar actividades desde props
+    loadActividadesFromProps();
+  }, [actividadesProp, loadActividadesFromProps]);
 
   // Generar meses abreviados con año, filtrados por rango de fechas
   const getMesesAnioActualAbreviados = (fechaInicio: Date | null, fechaTermino: Date | null): { label: string; value: string }[] => {

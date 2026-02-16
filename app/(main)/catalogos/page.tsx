@@ -10,6 +10,7 @@ import { Skeleton } from 'primereact/skeleton';
 import { BreadCrumb } from 'primereact/breadcrumb';
 import { CATALOGOS_CONFIG } from '@/src/config/catalogos';
 import { useAuth } from '@/layout/context/authContext';
+import { useAllPermissions } from '@/src/hooks/useAllPermissions';
 import { usePermissions } from '@/src/hooks/usePermissions';
 
 interface CatalogoStats {
@@ -22,22 +23,15 @@ interface CatalogoStats {
     lastUpdated?: string;
 }
 
-interface CatalogoModificado {
-    id: number | string;
-    key: string;
-    catalogo: string;
-    fecha?: string;
-}
-
 const Page = () => {
     const router = useRouter();
-    const { isAuthenticated } = useAuth();
+    const { user, isAuthenticated } = useAuth();
     const [catalogosStats, setCatalogosStats] = useState<CatalogoStats[]>([]);
     const [loading, setLoading] = useState(true);
-    const KEY_CATALOGOS_MODIFICADOS = 'catalogos_modificados';
+    // ✅ Set de keys de catálogos que tienen acciones pendientes (para el badge)
     const [catalogosModificados, setCatalogosModificados] = useState<Set<string>>(new Set());
-    const [catalogosModificadosLista, setCatalogosModificadosLista] = useState<CatalogoModificado[]>([]);
 
+    const catalogosPermissions = useAllPermissions(user);
     const { hasAnyPermission } = usePermissions();
 
     const catalogosLastUpdated: Record<string, string> = {
@@ -73,19 +67,17 @@ const Page = () => {
 
             // ✅ Detectar badges junto con los stats — misma key que escribe CatalogoBasePage
             if (typeof window !== 'undefined') {
-                let listaModificados: CatalogoModificado[] = [];
-
-                try {
-                    const raw = localStorage.getItem(KEY_CATALOGOS_MODIFICADOS);
-                    const parsed = raw ? JSON.parse(raw) : [];
-                    listaModificados = Array.isArray(parsed) ? parsed : [parsed];
-                } catch {
-                    listaModificados = [];
-                }
-
-                const listaNormalizada = listaModificados.filter((item) => !!item?.key);
-                setCatalogosModificadosLista(listaNormalizada);
-                setCatalogosModificados(new Set(listaNormalizada.map((item) => item.key)));
+                const modificados = new Set<string>();
+                CATALOGOS_CONFIG.forEach((config) => {
+                    const raw = localStorage.getItem(`catalogo_accion_datos_${config.key}`);
+                    if (!raw) return;
+                    try {
+                        const parsed = JSON.parse(raw);
+                        const tieneAcciones = Array.isArray(parsed) ? parsed.length > 0 : !!parsed?.accion;
+                        if (tieneAcciones) modificados.add(config.key);
+                    } catch {}
+                });
+                setCatalogosModificados(modificados);
             }
         } catch (error) {
         } finally {
@@ -96,23 +88,6 @@ const Page = () => {
     // ✅ Limpiar la key del catálogo cuando el usuario hace click en "Gestionar"
     //    para que el badge desaparezca la próxima vez que vuelva al Dashboard
     const handleNavegar = (catalogo: CatalogoStats) => {
-        if (typeof window !== 'undefined') {
-            try {
-                const raw = localStorage.getItem(KEY_CATALOGOS_MODIFICADOS);
-                const parsed = raw ? JSON.parse(raw) : [];
-                const lista = Array.isArray(parsed) ? parsed : [parsed];
-                const filtrados = lista.filter((item: CatalogoModificado) => item?.key !== catalogo.key);
-                localStorage.setItem(KEY_CATALOGOS_MODIFICADOS, JSON.stringify(filtrados));
-            } catch {}
-
-            setCatalogosModificados((prev) => {
-                const next = new Set(prev);
-                next.delete(catalogo.key);
-                return next;
-            });
-            setCatalogosModificadosLista((prev) => prev.filter((item) => item.key !== catalogo.key));
-        }
-
         router.push(catalogo.route);
     };
 
@@ -299,21 +274,6 @@ const Page = () => {
                         <i className="pi pi-info-circle text-blue-600"></i>
                         <p className="text-600 m-0">Selecciona un catálogo para ver sus elementos, agregar nuevos, editar o cambiar su estatus</p>
                     </div>
-                    {catalogosModificadosLista.length > 0 && (
-                        <div className="mt-3 p-3 border-round surface-50 border-1 border-200">
-                            <h6 className="m-0 mb-2 text-900">Catálogos modificados</h6>
-                            <div className="grid">
-                                {catalogosModificadosLista.map((item) => (
-                                    <div key={item.key} className="col-12 md:col-6">
-                                        <div className="flex align-items-center justify-content-between py-2 border-bottom-1 border-200">
-                                            <span className="text-700">ID: {item.id}</span>
-                                            <span className="text-900 font-medium">{item.catalogo}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
 

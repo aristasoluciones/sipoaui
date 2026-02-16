@@ -33,56 +33,6 @@ const CatalogoBasePage: React.FC<CatalogoPageProps> = ({ catalogoKey, title, des
     // Una sola key por catalogo — siempre array, nunca objeto suelto
     // El dashboard lee esta key para mostrar el badge
     const KEY_DATOS = `catalogo_accion_datos_${catalogoKey}`;
-    const KEY_CATALOGOS_MODIFICADOS = 'catalogos_modificados';
-
-    const registrarCatalogoModificado = () => {
-        if (typeof window === 'undefined') return;
-
-        const configIndex = CATALOGOS_CONFIG.findIndex((c) => c.key === catalogoKey);
-        const catalogoId = configIndex >= 0 ? configIndex + 1 : catalogoKey;
-        const catalogoNombre = config?.title ?? title;
-
-        let catalogosModificados: any[] = [];
-        try {
-            const raw = localStorage.getItem(KEY_CATALOGOS_MODIFICADOS);
-            const parsed = raw ? JSON.parse(raw) : [];
-            catalogosModificados = Array.isArray(parsed) ? parsed : [parsed];
-        } catch {
-            catalogosModificados = [];
-        }
-
-        const nextItem = {
-            id: catalogoId,
-            key: catalogoKey,
-            catalogo: catalogoNombre,
-            fecha: new Date().toISOString()
-        };
-
-        const index = catalogosModificados.findIndex((item) => item?.key === catalogoKey);
-        if (index >= 0) {
-            catalogosModificados[index] = nextItem;
-        } else {
-            catalogosModificados.push(nextItem);
-        }
-
-        localStorage.setItem(KEY_CATALOGOS_MODIFICADOS, JSON.stringify(catalogosModificados));
-    };
-
-    const limpiarCatalogoModificadoActual = () => {
-        if (typeof window === 'undefined') return;
-
-        let catalogosModificados: any[] = [];
-        try {
-            const raw = localStorage.getItem(KEY_CATALOGOS_MODIFICADOS);
-            const parsed = raw ? JSON.parse(raw) : [];
-            catalogosModificados = Array.isArray(parsed) ? parsed : [parsed];
-        } catch {
-            catalogosModificados = [];
-        }
-
-        const filtrados = catalogosModificados.filter((item) => item?.key !== catalogoKey);
-        localStorage.setItem(KEY_CATALOGOS_MODIFICADOS, JSON.stringify(filtrados));
-    };
 
     const registrarAccion = (accion: 'creado' | 'editado' | 'eliminado', item: any) => {
         if (typeof window === 'undefined') return;
@@ -107,16 +57,12 @@ const CatalogoBasePage: React.FC<CatalogoPageProps> = ({ catalogoKey, title, des
         });
 
         localStorage.setItem(KEY_DATOS, JSON.stringify(acciones));
-        registrarCatalogoModificado();
     };
 
     // Al montar: mostrar toasts de acciones previas (sticky — no se cierran solos)
     // Al desmontar: borrar la key para que el badge desaparezca en el dashboard
     useEffect(() => {
         if (typeof window === 'undefined') return;
-
-        // Al entrar al catalogo se considera "visto", por eso quitamos su marca global.
-        limpiarCatalogoModificadoActual();
 
         const raw = localStorage.getItem(KEY_DATOS);
         if (!raw) return;

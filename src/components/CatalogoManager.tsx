@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
@@ -18,6 +18,7 @@ import { CatalogoConfig } from '@/types/catalogos';
 import { usePermissions } from '@/src/hooks/usePermissions';
 import { useNotification } from '@/layout/context/notificationContext';
 import { formatApiError } from '@/src/utils';
+import http from '@/src/lib/axios';
 import * as yup from 'yup';
 
 interface CatalogoManagerProps {
@@ -28,40 +29,81 @@ interface CatalogoManagerProps {
     onRefresh: () => Promise<void>;
 }
 
+interface ImportErrorItem {
+    row?: number | string;
+    field?: string;
+    message?: string;
+    [key: string]: any;
+}
+
+interface ImportResult {
+    totalCreated: number;
+    totalUpdated: number;
+    totalErrors: number;
+    errors: ImportErrorItem[];
+}
+
+interface ImportPreviewRow {
+    rowNumber: number;
+    fileRowNumber: number;
+    backendRowNumber?: number;
+    values: string[];
+}
+
 const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave, onDelete, onRefresh }) => {
     const router = useRouter();
+    const pathname = usePathname();
     const { user } = useAuth();
     const [items, setItems] = useState<any[]>(data);
     const [selectedItems, setSelectedItems] = useState<any[]>([]);
     const [globalFilter, setGlobalFilter] = useState<string>('');
     const [filters, setFilters] = useState<any>({});
     const [showDialog, setShowDialog] = useState(false);
+    const [showImportDialog, setShowImportDialog] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importResult, setImportResult] = useState<ImportResult | null>(null);
+    const [previewHeaders, setPreviewHeaders] = useState<string[]>([]);
+    const [previewRows, setPreviewRows] = useState<ImportPreviewRow[]>([]);
+    const [allPreviewRows, setAllPreviewRows] = useState<ImportPreviewRow[]>([]);
     const [validationErrors, setValidationErrors] = useState<any>({});
     const toast = useRef<Toast>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // notifications
     const { success: showMsgSuccess, error: showMsgError } = useNotification();
+
+    // Verificar permisos
     const { canAccess } = usePermissions();
 
     const canCreate = canAccess(config.permissions[0], ['create']);
     const canUpdate = canAccess(config.permissions[0], ['update']);
     const canDelete = canAccess(config.permissions[0], ['delete']);
 
+    // Crear esquema de validación dinámico
     const createValidationSchema = useCallback(() => {
         const schema: any = {};
 
         config.columns?.forEach((column) => {
             let fieldSchema: any;
 
+            // Validaciones específicas por tipo
             switch (column.type) {
                 case 'text':
                 case 'textarea':
                     fieldSchema = yup.string();
-                    if (column.field === 'codigo') fieldSchema = fieldSchema.max(20, 'El código no puede tener más de 20 caracteres');
-                    if (column.field === 'nombre') fieldSchema = fieldSchema.min(2, 'El nombre debe tener al menos 2 caracteres').max(100, 'El nombre no puede tener más de 100 caracteres');
-                    if (column.field === 'descripcion') fieldSchema = fieldSchema.max(500, 'La descripción no puede tener más de 500 caracteres');
+                    if (column.field === 'codigo') {
+                        fieldSchema = fieldSchema.max(20, 'El código no puede tener más de 20 caracteres');
+                    }
+                    if (column.field === 'nombre') {
+                        fieldSchema = fieldSchema.min(2, 'El nombre debe tener al menos 2 caracteres').max(100, 'El nombre no puede tener más de 100 caracteres');
+                    }
+                    if (column.field === 'descripcion') {
+                        fieldSchema = fieldSchema.max(500, 'La descripción no puede tener más de 500 caracteres');
+                    }
                     break;
                 case 'number':
                     fieldSchema = yup.number().positive('Debe ser un número positivo');
@@ -80,6 +122,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                     fieldSchema = yup.mixed();
             }
 
+            // Campos requeridos
             if (['nombre', 'estado', 'codigo'].includes(column.field)) {
                 fieldSchema = fieldSchema.required(`${column.header} es requerido`);
             }
@@ -97,17 +140,24 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
     }, [data]);
 
     useEffect(() => {
+        // Inicializar filtros
         const initialFilters: any = { global: { value: null, matchMode: FilterMatchMode.CONTAINS } };
         config.columns?.forEach((col) => {
-            if (col.filterable) initialFilters[col.field] = { value: null, matchMode: FilterMatchMode.CONTAINS };
+            if (col.filterable) {
+                initialFilters[col.field] = { value: null, matchMode: FilterMatchMode.CONTAINS };
+            }
         });
         setFilters(initialFilters);
     }, [config.columns]);
 
+    // Redirigir a página personalizada para catálogos específicos
     useEffect(() => {
-        if (config.key === 'partidas') router.push('/catalogos/partidas');
+        if (config.key === 'partidas') {
+            router.push('/catalogos/partidas');
+        }
     }, [config.key, router]);
 
+    // Validar si el catálogo tiene componente personalizado
     if (config.customComponent) {
         return (
             <div className="card">
@@ -121,6 +171,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
         );
     }
 
+    // Validar que tenga columnas definidas
     if (!config.columns || config.columns.length === 0) {
         return (
             <div className="card">
@@ -136,7 +187,12 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
     }
 
     const openNew = () => {
-        setEditingItem({ nombre: '', codigo: '', descripcion: '', estado: 'Activo' });
+        setEditingItem({
+            nombre: '',
+            codigo: '',
+            descripcion: '',
+            estado: 'Activo'
+        });
         setValidationErrors({});
         setShowDialog(true);
     };
@@ -154,15 +210,18 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
 
     const saveItem = async () => {
         try {
+            // Validar con yup
             await validationSchema.validate(editingItem, { abortEarly: false });
             setValidationErrors({});
+
             setSaving(true);
-            await onSave(editingItem); // CatalogoBasePage registra en localStorage aquí
+            await onSave(editingItem);
             hideDialog();
             await onRefresh();
             showMsgSuccess('Elemento guardado exitosamente');
         } catch (validationError: any) {
             if (validationError.name === 'ValidationError') {
+                // Errores de validación de yup
                 const errors: any = {};
                 validationError.inner.forEach((err: any) => {
                     errors[err.path] = err.message;
@@ -170,7 +229,9 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                 setValidationErrors(errors);
                 showMsgError('Por favor corrija los errores en el formulario');
             } else {
-                showMsgError(formatApiError(validationError));
+                // Otros errores
+                const errorMessage = formatApiError(validationError);
+                showMsgError(errorMessage);
             }
         } finally {
             setSaving(false);
@@ -178,17 +239,29 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
     };
 
     const confirmDelete = (item: any) => {
-        if (window.confirm(`¿Está seguro de eliminar "${item.nombre}"?`)) deleteItem(item);
+        if (window.confirm(`¿Está seguro de eliminar "${item.nombre}"?`)) {
+            deleteItem(item);
+        }
     };
 
     const deleteItem = async (item: any) => {
         try {
             setSaving(true);
-            await onDelete(item.id); // CatalogoBasePage registra en localStorage aquí
+            await onDelete(item.id);
             await onRefresh();
-            toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Elemento eliminado', life: 3000 });
+            toast.current?.show({
+                severity: 'success',
+                summary: 'Éxito',
+                detail: 'Elemento eliminado',
+                life: 3000
+            });
         } catch (error) {
-            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al eliminar el elemento', life: 3000 });
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Error al eliminar el elemento',
+                life: 3000
+            });
         } finally {
             setSaving(false);
         }
@@ -202,6 +275,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
     };
 
     const exportCSV = () => {
+        // Implementar exportación a CSV
         const csvData = items.map((item) => {
             const row: any = {};
             config.columns?.forEach((col) => {
@@ -209,13 +283,18 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
             });
             return row;
         });
+
+        // Convertir a CSV y descargar
         const csv = convertToCSV(csvData);
         downloadCSV(csv, `${config.title}.csv`);
     };
 
     const convertToCSV = (data: any[]) => {
         if (!data.length) return '';
-        return [Object.keys(data[0]).join(','), ...data.map((row) => Object.values(row).join(','))].join('\n');
+
+        const headers = Object.keys(data[0]).join(',');
+        const rows = data.map((row) => Object.values(row).join(','));
+        return [headers, ...rows].join('\n');
     };
 
     const downloadCSV = (csv: string, filename: string) => {
@@ -235,11 +314,297 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
             setLoading(true);
             await onRefresh();
         } catch (error) {
-            toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al actualizar los datos', life: 3000 });
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: 'Error al actualizar los datos',
+                life: 3000
+            });
         } finally {
             setLoading(false);
         }
     };
+
+    const handleImport = () => {
+        setImportFile(null);
+        setImportResult(null);
+        setPreviewHeaders([]);
+        setPreviewRows([]);
+        setAllPreviewRows([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setShowImportDialog(true);
+    };
+
+    const hideImportDialog = () => {
+        if (importing) return;
+        setShowImportDialog(false);
+    };
+
+    const getCatalogImportKey = () => {
+        const path = (pathname || config.route || '').split('?')[0].split('#')[0];
+        const pathKey = path.split('/').filter(Boolean).pop();
+
+        // El backend de importacion valida catalogos con claves canonicas (snake_case),
+        // pero algunas rutas del frontend usan kebab-case o nombres distintos.
+        // Se normaliza aqui para evitar errores 422 al enviar FormData.
+        const importCatalogMap: Record<string, string> = {
+            unidades: 'unidades',
+            objetivos: 'objetivos',
+            politicas: 'politicas',
+            programas: 'programas',
+            'marco-normativo': 'marcos_normativos',
+            'tipos-actividad': 'tipos_actividad',
+            entregables: 'entregables',
+            beneficiarios: 'beneficiarios'
+        };
+
+        const rawKey = pathKey || config.key;
+        return importCatalogMap[rawKey] || rawKey;
+    };
+
+    const parseCsvRow = (line: string) => {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            const next = line[i + 1];
+
+            if (char === '"' && inQuotes && next === '"') {
+                current += '"';
+                i++;
+                continue;
+            }
+
+            if (char === '"') {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+                continue;
+            }
+
+            current += char;
+        }
+
+        result.push(current.trim());
+        return result;
+    };
+
+    const loadPreviewFromFile = async (file: File) => {
+        const extension = file.name.split('.').pop()?.toLowerCase();
+        let rows: string[][] = [];
+
+        if (extension === 'xlsx' || extension === 'xls') {
+            const XLSX = await import('xlsx');
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const firstSheet = workbook.Sheets[firstSheetName];
+            rows = (XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' }) as any[][]).map((row) => row.map((cell) => String(cell ?? '').trim()));
+        } else {
+            const content = await file.text();
+            rows = content
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .map((line) => parseCsvRow(line));
+        }
+
+        if (!rows.length) {
+            setPreviewHeaders([]);
+            setPreviewRows([]);
+            setAllPreviewRows([]);
+            return;
+        }
+
+        const headers = rows[0].map((header) => String(header || '').trim());
+        const normalizedRows = rows.slice(1).map((row, index) => {
+            const dataRowNumber = index + 1;
+            const fileRowNumber = index + 2; // Incluye encabezado en fila 1
+            return {
+                rowNumber: dataRowNumber,
+                fileRowNumber,
+                values: row.map((value) => String(value ?? '').trim())
+            };
+        });
+        const firstFiveRows = normalizedRows.slice(0, 5);
+
+        setPreviewHeaders(headers);
+        setPreviewRows(firstFiveRows);
+        setAllPreviewRows(normalizedRows);
+    };
+
+    const normalizeImportResult = (payload: any): ImportResult => {
+        const extractRowFromMessage = (message: string): number | undefined => {
+            const match = message.match(/(?:fila|row|linea|line)\s*[:#-]?\s*(\d+)/i);
+            if (!match) return undefined;
+            const row = Number(match[1]);
+            return Number.isFinite(row) ? row : undefined;
+        };
+
+        const toNumberRow = (value: any): number | undefined => {
+            const row = Number(value);
+            return Number.isFinite(row) ? row : undefined;
+        };
+
+        const totalCreated = Number(payload?.total_created ?? payload?.totalCreated ?? 0);
+        const totalUpdated = Number(payload?.total_updated ?? payload?.totalUpdated ?? 0);
+        const totalErrors = Number(payload?.total_errors ?? payload?.totalErrors ?? 0);
+        const rawErrors = payload?.errors;
+
+        let errors: ImportErrorItem[] = [];
+        if (Array.isArray(rawErrors)) {
+            errors = rawErrors.map((item: any) => {
+                if (typeof item === 'string') {
+                    return {
+                        row: extractRowFromMessage(item),
+                        message: item
+                    };
+                }
+
+                const message = item?.message ?? item?.error ?? JSON.stringify(item);
+                const explicitRow = item?.row ?? item?.fila ?? item?.line ?? item?.linea;
+                return {
+                    row: toNumberRow(explicitRow) ?? extractRowFromMessage(String(message)),
+                    field: item?.field ?? item?.campo,
+                    message
+                };
+            });
+        } else if (rawErrors && typeof rawErrors === 'object') {
+            errors = Object.entries(rawErrors).flatMap(([field, value]) => {
+                if (Array.isArray(value)) {
+                    return value.map((message: any) => {
+                        const msg = String(message);
+                        return {
+                            field,
+                            row: extractRowFromMessage(msg),
+                            message: msg
+                        };
+                    });
+                }
+                const msg = String(value);
+                return [{ field, row: extractRowFromMessage(msg), message: msg }];
+            });
+        }
+
+        return {
+            totalCreated: Number.isFinite(totalCreated) ? totalCreated : 0,
+            totalUpdated: Number.isFinite(totalUpdated) ? totalUpdated : 0,
+            totalErrors: Number.isFinite(totalErrors) ? totalErrors : errors.length,
+            errors
+        };
+    };
+
+    const executeImport = async () => {
+        if (!importFile) {
+            showMsgError('Selecciona un archivo para importar');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('archivo', importFile);
+        formData.append('catalogo', getCatalogImportKey());
+
+        try {
+            setImporting(true);
+            setImportResult(null);
+
+            const response = await http.post('/api/catalogos/importar', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            const payload = response?.data ?? response ?? {};
+            const normalizedResult = normalizeImportResult(payload);
+            setImportResult(normalizedResult);
+            await onRefresh();
+
+            if (normalizedResult.totalErrors > 0) {
+                showMsgError(`Importacion completada con errores. Creados: ${normalizedResult.totalCreated}, actualizados: ${normalizedResult.totalUpdated}, errores: ${normalizedResult.totalErrors}.`);
+            } else {
+                showMsgSuccess(`Importacion completada. Creados: ${normalizedResult.totalCreated}, actualizados: ${normalizedResult.totalUpdated}.`);
+            }
+        } catch (error: any) {
+            const payload = error?.response?.data ?? {};
+            const normalizedResult = normalizeImportResult(payload);
+            const hasStructuredErrors = normalizedResult.errors.length > 0 || normalizedResult.totalErrors > 0;
+            if (hasStructuredErrors) {
+                setImportResult(normalizedResult);
+            }
+            const message = formatApiError(error);
+            showMsgError(message || 'No fue posible importar el archivo');
+        } finally {
+            setImporting(false);
+        }
+    };
+
+    const handleImportFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const extension = file.name.split('.').pop()?.toLowerCase();
+        const validExtensions = ['csv', 'xls', 'xlsx'];
+
+        if (!extension || !validExtensions.includes(extension)) {
+            showMsgError('Formato no permitido. Use archivos CSV, XLS o XLSX.');
+            event.target.value = '';
+            return;
+        }
+
+        setImportResult(null);
+        setImportFile(file);
+        setPreviewHeaders([]);
+        setPreviewRows([]);
+        setAllPreviewRows([]);
+
+        try {
+            await loadPreviewFromFile(file);
+        } catch (error) {
+            setPreviewHeaders([]);
+            setPreviewRows([]);
+            showMsgError('No se pudo generar la vista previa del archivo');
+        }
+    };
+
+    const isHeaderErrorMessage = (message?: string) => {
+        if (!message) return false;
+        const normalized = message.toLowerCase();
+        return (
+            normalized.includes('encabezad') ||
+            normalized.includes('header') ||
+            normalized.includes('estructura requerida') ||
+            normalized.includes('columnas obligatorias') ||
+            normalized.includes('columnas no permitidas')
+        );
+    };
+
+    const hasHeaderError = (importResult?.errors || []).some((item) => isHeaderErrorMessage(item.message));
+
+    const backendErrorRows = (importResult?.errors || [])
+        .filter((item) => !isHeaderErrorMessage(item.message))
+        .map((item) => Number(item.row))
+        .filter((row) => Number.isFinite(row) && row > 0);
+
+    const previewByDataRow = new Map(allPreviewRows.map((row) => [row.rowNumber, row]));
+
+    const errorPreviewRows = backendErrorRows
+        .map((backendRow) => {
+            const baseRow = previewByDataRow.get(backendRow - 1);
+            if (!baseRow) return null;
+            return {
+                ...baseRow,
+                backendRowNumber: backendRow
+            } as ImportPreviewRow;
+        })
+        .filter((row): row is ImportPreviewRow => row !== null);
+
+    const mappedErrorRows = new Set(errorPreviewRows.map((row) => row.rowNumber));
+    const showErrorRowsPreview = errorPreviewRows.length > 0;
+    const displayedPreviewRows = showErrorRowsPreview ? errorPreviewRows : previewRows;
 
     const statusBodyTemplate = (rowData: any) => {
         const severity = rowData.estado === 'Activo' ? 'success' : 'danger';
@@ -247,26 +612,34 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
         return <Badge value={value} severity={severity} />;
     };
 
-    const actionBodyTemplate = (rowData: any) => (
-        <div className="flex gap-2">
-            {canUpdate && <Button icon="pi pi-pencil" size="small" severity="success" rounded onClick={() => editItem(rowData)} tooltip="Editar" />}
-            {canDelete && <Button icon="pi pi-trash" size="small" severity="danger" rounded onClick={() => confirmDelete(rowData)} tooltip="Eliminar" />}
-        </div>
-    );
+    const actionBodyTemplate = (rowData: any) => {
+        return (
+            <div className="flex gap-2">
+                {canUpdate && <Button icon="pi pi-pencil" size="small" severity="success" rounded onClick={() => editItem(rowData)} tooltip="Editar" />}
+                {canDelete && <Button icon="pi pi-trash" size="small" severity="danger" rounded onClick={() => confirmDelete(rowData)} tooltip="Eliminar" />}
+            </div>
+        );
+    };
 
-    const leftToolbarTemplate = () => (
-        <div className="flex gap-2">
-            {canCreate && <Button label="Nuevo" icon="pi pi-plus" onClick={openNew} />}
-            {canDelete && selectedItems.length > 0 && <Button label="Eliminar Seleccionados" icon="pi pi-trash" severity="danger" onClick={deleteSelectedItems} />}
-        </div>
-    );
+    const leftToolbarTemplate = () => {
+        return (
+            <div className="flex gap-2">
+                {canCreate && <Button label="Nuevo" icon="pi pi-plus" onClick={openNew} />}
+                {canDelete && selectedItems.length > 0 && <Button label="Eliminar Seleccionados" icon="pi pi-trash" severity="danger" onClick={deleteSelectedItems} />}
+            </div>
+        );
+    };
 
-    const rightToolbarTemplate = () => (
-        <div className="flex gap-2">
-            <Button label="Exportar" icon="pi pi-upload" severity="help" tooltip="Exportar a CSV" tooltipOptions={{ position: 'top' }} onClick={exportCSV} />
-            <Button icon="pi pi-refresh" severity="secondary" onClick={handleRefresh} tooltip="Actualizar" tooltipOptions={{ position: 'top' }} />
-        </div>
-    );
+    const rightToolbarTemplate = () => {
+        return (
+            <div className="flex gap-2">
+                <input ref={fileInputRef} type="file" accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={handleImportFileChange} />
+                <Button label="Importar" icon="pi pi-upload" severity="secondary" tooltip="Importar desde archivo" tooltipOptions={{ position: 'top' }} onClick={handleImport} loading={importing} disabled={importing} />
+                <Button label="Exportar" icon="pi pi-download" severity="help" tooltip="Exportar a CSV" tooltipOptions={{ position: 'top' }} onClick={exportCSV} />
+                <Button icon="pi pi-refresh" severity="secondary" onClick={handleRefresh} tooltip="Actualizar" tooltipOptions={{ position: 'top' }} />
+            </div>
+        );
+    };
 
     const header = (
         <div className="flex justify-content-between align-items-center">
@@ -324,7 +697,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
         <>
             <ConfirmDialog />
 
-            {/* Toolbar */}
+            {/* Toolbar separado en card */}
             <div className="card mb-3">
                 <div className="flex flex-wrap justify-content-between align-items-center gap-3">
                     <div className="flex align-items-center">{leftToolbarTemplate()}</div>
@@ -332,6 +705,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                 </div>
             </div>
 
+            {/* DataTable en card con p-0 overflow-hidden */}
             <div className="card p-0 overflow-hidden">
                 <DataTable
                     value={items}
@@ -353,7 +727,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                 >
                     <Column selectionMode="multiple" headerStyle={{ width: '3rem' }} />
 
-                    {config.columns?.map((col) => (
+                    {config.columns?.map((col, index) => (
                         <Column
                             key={col.field}
                             field={col.field}
@@ -391,11 +765,14 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
             >
                 {editingItem && (
                     <div className="grid p-3">
+                        {/* Campos dinámicos del catálogo */}
                         {config.columns
                             ?.filter((col) => col.field !== 'estado')
                             .map((column) => {
+                                // Campos de texto largo ocupan toda la fila
                                 const isFullWidth = column.type === 'textarea' || column.field === 'descripcion';
                                 const colClass = isFullWidth ? 'col-12' : 'col-12 md:col-6';
+
                                 return (
                                     <div key={column.field} className={colClass}>
                                         <label htmlFor={column.field} className="block font-medium text-900 mb-2">
@@ -407,6 +784,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                                 );
                             })}
 
+                        {/* Campo de estado */}
                         <div className="col-12 md:col-6">
                             <label htmlFor="estado" className="block font-medium text-900 mb-2">
                                 Estado <span className="text-red-500 ml-1">*</span>
@@ -425,6 +803,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                             {validationErrors.estado && <small className="p-error block mt-1">{validationErrors.estado}</small>}
                         </div>
 
+                        {/* Mensaje de campos requeridos */}
                         <div className="col-12">
                             <div className="flex align-items-center gap-2 p-3 bg-blue-50 border-round mt-2">
                                 <i className="pi pi-info-circle text-blue-600"></i>
@@ -435,6 +814,118 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                         </div>
                     </div>
                 )}
+            </Dialog>
+
+            <Dialog
+                visible={showImportDialog}
+                style={{ width: '650px' }}
+                header="Importar archivo"
+                modal
+                onHide={hideImportDialog}
+                footer={
+                    <div className="flex justify-content-end gap-2">
+                        <Button label="Cerrar" icon="pi pi-times" severity="secondary" outlined onClick={hideImportDialog} disabled={importing} />
+                        <Button label="Importar" icon="pi pi-check" onClick={executeImport} loading={importing} disabled={!importFile || importing} />
+                    </div>
+                }
+            >
+                <div className="flex flex-column gap-3">
+                    <p className="m-0 text-600">Selecciona un archivo CSV, XLS o XLSX para importar este catalogo.</p>
+                    <div className="flex gap-2 align-items-center">
+                        <Button
+                            label={importFile ? 'Cambiar archivo' : 'Elegir archivo'}
+                            icon="pi pi-file"
+                            onClick={() => {
+                                if (fileInputRef.current) {
+                                    fileInputRef.current.value = '';
+                                    fileInputRef.current.click();
+                                }
+                            }}
+                        />
+                        <small className="text-700">{importFile ? importFile.name : 'No hay archivo seleccionado'}</small>
+                    </div>
+
+                    {displayedPreviewRows.length > 0 && (
+                        <div className="border-1 surface-border border-round-xl p-0 overflow-hidden">
+                            <div className="flex align-items-center justify-content-between px-3 py-2 bg-blue-50 border-bottom-1 surface-border">
+                                <div className="flex align-items-center gap-2">
+                                    <i className="pi pi-table text-blue-600"></i>
+                                    <span className="font-semibold text-900">Vista previa</span>
+                                </div>
+                                <span className={`text-xs px-2 py-1 border-round font-medium ${showErrorRowsPreview ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {showErrorRowsPreview ? `Filas con error (${errorPreviewRows.length})` : 'Primeras 5 filas'}
+                                </span>
+                            </div>
+                            <div className="overflow-auto">
+                                <table className="w-full text-sm table-fixed">
+                                    <thead>
+                                        <tr className={hasHeaderError ? 'bg-red-50' : 'bg-gray-50'}>
+                                            <th className={`text-left p-2 border-bottom-1 surface-border w-5rem ${hasHeaderError ? 'text-red-700 font-semibold' : 'text-700'}`}>Fila</th>
+                                            {previewHeaders.map((header, idx) => (
+                                                <th key={`preview-header-${idx}`} className={`text-left p-2 border-bottom-1 surface-border ${hasHeaderError ? 'text-red-700 font-semibold' : 'text-700'}`}>
+                                                    <div className="white-space-nowrap overflow-hidden text-overflow-ellipsis" title={header || `Columna ${idx + 1}`}>
+                                                        {header || `Columna ${idx + 1}`}
+                                                    </div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {displayedPreviewRows.map((row) => {
+                                            const hasError = mappedErrorRows.has(row.rowNumber);
+                                            const displayedRowNumber = row.backendRowNumber ?? row.rowNumber;
+                                            return (
+                                                <tr key={`preview-row-${row.rowNumber}`} className={hasError ? 'bg-red-50' : row.rowNumber % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                    <td className={`p-2 border-bottom-1 surface-border ${hasError ? 'text-red-700 font-medium' : 'text-700'}`}>
+                                                        <span className={`px-2 py-1 border-round text-xs ${hasError ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-700'}`}>{displayedRowNumber}</span>
+                                                    </td>
+                                                    {previewHeaders.map((_, idx) => (
+                                                        <td key={`preview-cell-${row.rowNumber}-${idx}`} className={`p-2 border-bottom-1 surface-border ${hasError ? 'text-red-700' : 'text-800'}`}>
+                                                            <div className="white-space-nowrap overflow-hidden text-overflow-ellipsis" title={row.values[idx] || '-'}>
+                                                                {row.values[idx] || '-'}
+                                                            </div>
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="px-3 py-2 bg-gray-50 border-top-1 surface-border">
+                                <small className="text-600">
+                                    {hasHeaderError
+                                        ? 'Se detectaron errores en encabezados (fila 1 del archivo).'
+                                        : showErrorRowsPreview
+                                          ? 'Mostrando filas con error reportadas por el backend (numeracion original).'
+                                          : 'Las filas con error se resaltan en rojo.'}
+                                </small>
+                            </div>
+                        </div>
+                    )}
+
+                    {importResult && (
+                        <div className={`border-1 border-round p-3 ${importResult.totalErrors > 0 ? 'border-red-300 bg-red-50' : 'surface-border'}`}>
+                            <div className="font-semibold mb-2">Resultado</div>
+                            <div className="text-sm mb-1">Creados: {importResult.totalCreated}</div>
+                            <div className="text-sm mb-1">Actualizados: {importResult.totalUpdated}</div>
+                            <div className={`text-sm mb-2 ${importResult.totalErrors > 0 ? 'text-red-700 font-medium' : ''}`}>Errores: {importResult.totalErrors}</div>
+
+                            {importResult.errors.length > 0 && (
+                                <div className="max-h-15rem overflow-auto border-top-1 border-red-300 pt-2">
+                                    {importResult.errors.map((errorItem, index) => (
+                                        <div key={`import-error-${index}`} className="text-sm mb-2 text-red-700">
+                                            <span className="font-medium">Error {index + 1}:</span>{' '}
+                                            {errorItem.row !== undefined ? `Fila ${errorItem.row}. ` : ''}
+                                            {errorItem.field ? `${errorItem.field}: ` : ''}
+                                            {errorItem.message || 'Error de validacion'}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
             </Dialog>
         </>
     );

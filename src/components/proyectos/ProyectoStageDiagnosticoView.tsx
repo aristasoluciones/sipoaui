@@ -204,7 +204,7 @@ const ProyectoStageDiagnosticoView: React.FC<ProyectoStageDiagnosticoViewProps> 
                     <i className="pi pi-arrow-down text-red-500"></i>
                     <h6 className="m-0 text-900 font-semibold">Efectos</h6>
                   </div>
-                  {renderField('Consecuencias', diagnosticoData.efectos)}
+                  {renderListField('', diagnosticoData.efectos)}
                 </div>
               </div>
 
@@ -214,7 +214,7 @@ const ProyectoStageDiagnosticoView: React.FC<ProyectoStageDiagnosticoViewProps> 
                     <i className="pi pi-flag text-green-500"></i>
                     <h6 className="m-0 text-900 font-semibold">Fines</h6>
                   </div>
-                  {renderField('Objetivos', diagnosticoData.fines)}
+                  {renderListField('', diagnosticoData.fines)}
                 </div>
               </div>
             </div>

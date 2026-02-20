@@ -70,6 +70,9 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
     const [previewRows, setPreviewRows] = useState<ImportPreviewRow[]>([]);
     const [allPreviewRows, setAllPreviewRows] = useState<ImportPreviewRow[]>([]);
     const [validationErrors, setValidationErrors] = useState<any>({});
+    const [sortMode, setSortMode] = useState<'datetime' | 'alphabetical'>('datetime');
+    const [tableSortField, setTableSortField] = useState<string>('__groupDate');
+    const [tableSortOrder, setTableSortOrder] = useState<1 | -1>(-1);
     const toast = useRef<Toast>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -134,6 +137,96 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
     }, [config.columns]);
 
     const validationSchema = useMemo(() => createValidationSchema(), [createValidationSchema]);
+
+    const parseItemDate = useCallback((item: any): Date | null => {
+        const rawDate =
+            item?.updated_at ||
+            item?.updatedAt ||
+            item?.fechaModificacion ||
+            item?.fecha_actualizacion ||
+            item?.fechaActualizacion ||
+            item?.created_at ||
+            item?.createdAt ||
+            item?.fechaCreacion;
+
+        if (!rawDate) return null;
+
+        if (rawDate instanceof Date) {
+            return Number.isNaN(rawDate.getTime()) ? null : rawDate;
+        }
+
+        const value = String(rawDate).trim();
+        const normalizedDateTime = value.replace(' ', 'T');
+        const parsedDateTime = new Date(normalizedDateTime);
+        if (!Number.isNaN(parsedDateTime.getTime())) return parsedDateTime;
+
+        const ymdMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (ymdMatch) {
+            const year = Number(ymdMatch[1]);
+            const month = Number(ymdMatch[2]) - 1;
+            const day = Number(ymdMatch[3]);
+            const parsed = new Date(year, month, day);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }, []);
+
+    const getDateGroupKey = useCallback((item: any): string => {
+        const date = parseItemDate(item);
+        if (!date) return '0000-00-00';
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }, [parseItemDate]);
+
+    const getDateTimeValue = useCallback((item: any): number => {
+        const date = parseItemDate(item);
+        return date ? date.getTime() : 0;
+    }, [parseItemDate]);
+
+    const formatDateGroupLabel = (groupKey: string): string => {
+        if (groupKey === '0000-00-00') return 'Sin fecha';
+        const [year, month, day] = groupKey.split('-').map(Number);
+        if (!year || !month || !day) return 'Sin fecha';
+
+        const groupDate = new Date(year, month - 1, day);
+        const today = new Date();
+        const isToday =
+            groupDate.getFullYear() === today.getFullYear() &&
+            groupDate.getMonth() === today.getMonth() &&
+            groupDate.getDate() === today.getDate();
+
+        const formatted = groupDate.toLocaleDateString('es-MX', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        });
+
+        return isToday ? `Hoy - ${formatted}` : formatted;
+    };
+
+    const sortedItems = useMemo(() => {
+        return [...items]
+            .map((item) => ({
+                ...item,
+                __groupDate: getDateGroupKey(item),
+                __dateTimeValue: getDateTimeValue(item)
+            }))
+            .sort((a, b) => {
+                if (sortMode === 'alphabetical') {
+                    const nameA = String(a?.nombre || '').toLocaleLowerCase('es-MX');
+                    const nameB = String(b?.nombre || '').toLocaleLowerCase('es-MX');
+                    const nameCompare = nameA.localeCompare(nameB, 'es-MX');
+                    if (nameCompare !== 0) return nameCompare;
+                    return b.__dateTimeValue - a.__dateTimeValue;
+                }
+
+                return b.__dateTimeValue - a.__dateTimeValue;
+            });
+    }, [items, getDateGroupKey, getDateTimeValue, sortMode]);
 
     useEffect(() => {
         setItems(data);
@@ -650,6 +743,36 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
         </div>
     );
 
+    const rowGroupHeaderTemplate = (rowData: any) => {
+        const resetToDefaultSort = () => {
+            setSortMode('datetime');
+            setTableSortField('__groupDate');
+            setTableSortOrder(-1);
+        };
+
+        return (
+            <div className="date-group-header">
+                <div
+                    className="date-group-tab"
+                    role="button"
+                    tabIndex={0}
+                    onClick={resetToDefaultSort}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            resetToDefaultSort();
+                        }
+                    }}
+                    title="Ordenar por fecha y hora"
+                >
+                    <i className="pi pi-calendar mr-2"></i>
+                    <span>{formatDateGroupLabel(rowData.__groupDate)}</span>
+                </div>
+                <div className="date-group-divider" />
+            </div>
+        );
+    };
+
     const renderFormField = (column: any, value: any, onChange: (value: any) => void, error?: string) => {
         const hasError = !!error;
         const fieldClass = hasError ? 'w-full p-invalid' : 'w-full';
@@ -708,14 +831,21 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
             {/* DataTable en card con p-0 overflow-hidden */}
             <div className="card p-0 overflow-hidden">
                 <DataTable
-                    value={items}
+                    value={sortedItems}
                     selection={selectedItems}
                     onSelectionChange={(e) => setSelectedItems(e.value)}
+                    onSort={(e: any) => {
+                        setTableSortField(e?.sortField || '__groupDate');
+                        setTableSortOrder(e?.sortOrder === 1 ? 1 : -1);
+                        if (e?.sortField === 'nombre') {
+                            setSortMode('alphabetical');
+                        }
+                    }}
                     dataKey="id"
                     paginator
                     rows={15}
                     rowsPerPageOptions={[5, 15, 25]}
-                    className="datatable-responsive"
+                    className="datatable-responsive catalogo-datatable-grouped"
                     paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                     currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} elementos"
                     globalFilter={globalFilter}
@@ -724,6 +854,11 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                     header={header}
                     emptyMessage="No se encontraron elementos."
                     loading={loading}
+                    rowGroupMode={sortMode === 'datetime' ? 'subheader' : undefined}
+                    groupRowsBy={sortMode === 'datetime' ? '__groupDate' : undefined}
+                    sortField={tableSortField}
+                    sortOrder={tableSortOrder}
+                    rowGroupHeaderTemplate={sortMode === 'datetime' ? rowGroupHeaderTemplate : undefined}
                 >
                     <Column selectionMode="multiple" headerStyle={{ width: '3rem' }} />
 
@@ -927,6 +1062,53 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                     )}
                 </div>
             </Dialog>
+
+            <style jsx global>{`
+                .catalogo-datatable-grouped .p-rowgroup-header > td {
+                    background: #f8fafc !important;
+                    padding: 0.75rem 1rem !important;
+                    border-bottom: 0 !important;
+                    border-top: 0 !important;
+                    text-align: right !important;
+                }
+
+                .catalogo-datatable-grouped .date-group-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-end;
+                    gap: 0.75rem;
+                    width: 100%;
+                }
+
+                .catalogo-datatable-grouped .date-group-tab {
+                    display: inline-flex;
+                    align-items: center;
+                    background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+                    color: #ffffff;
+                    padding: 0.375rem 0.9rem;
+                    border-radius: 0.9rem 0.9rem 0.45rem 0.45rem;
+                    font-size: 0.85rem;
+                    font-weight: 700;
+                    letter-spacing: 0.01em;
+                    white-space: nowrap;
+                    box-shadow: 0 4px 10px rgba(219, 39, 119, 0.28);
+                    border: 1px solid #be185d;
+                    cursor: pointer;
+                    user-select: none;
+                }
+
+                .catalogo-datatable-grouped .date-group-tab .pi {
+                    font-size: 0.75rem;
+                    opacity: 0.95;
+                }
+
+                .catalogo-datatable-grouped .date-group-divider {
+                    flex: 1;
+                    height: 4px;
+                    border-radius: 999px;
+                    background: linear-gradient(90deg, #f9a8d4 0%, #fce7f3 55%, rgba(252, 231, 243, 0) 100%);
+                }
+            `}</style>
         </>
     );
 };

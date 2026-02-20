@@ -12,6 +12,7 @@ import { CATALOGOS_CONFIG } from '@/src/config/catalogos';
 import { useAuth } from '@/layout/context/authContext';
 import  { useAllPermissions } from '@/src/hooks/useAllPermissions';
 import  { usePermissions } from '@/src/hooks/usePermissions';
+import { CatalogosActualizacionesService } from '@/src/services/catalogosActualizaciones.service';
 
 interface CatalogoStats {
   key: string;
@@ -31,29 +32,15 @@ const CatalogosDashboard = () => {
 
   const catalogosPermissions = useAllPermissions(user);
   const { hasAnyPermission } = usePermissions();
-
-  // Datos mock de fechas de actualización para cada catálogo
-  const catalogosLastUpdated: Record<string, string> = {
-    'unidades': '2024-10-15',
-    'objetivos': '2024-09-28',
-    'politicas': '2024-10-01',
-    'programas': '2024-09-15',
-    'marcoNormativo': '2024-08-22',
-    'tipos-actividad': '2024-09-30',
-    'tipo-proyecto': '2024-10-10',
-    'beneficiarios': '2024-09-20',
-    'entregables': '2024-08-30',
-    'cargos': '2024-09-25',
-    'partidas': '2024-10-05',
-    'combustibles': '2024-08-15',
-    'viaticos': '2024-09-18',
-    'precios': '2024-10-12'
-  };
-
   const loadCatalogosStats = async () => {
     try {
       setLoading(true);
-      
+      let catalogosLastUpdated: Record<string, string> = {};
+      try {
+        catalogosLastUpdated = await CatalogosActualizacionesService.getAll();
+      } catch (error) {
+      }
+
       const stats: CatalogoStats[] = CATALOGOS_CONFIG.map(config => {
         return {
           key: config.key,
@@ -62,7 +49,7 @@ const CatalogosDashboard = () => {
           category: config.category,
           route: config.route,
           hasAccess: hasAnyPermission(config.permissions || []),
-          lastUpdated: catalogosLastUpdated[config.key]
+          lastUpdated: catalogosLastUpdated?.[config.key]
         };
       });
 
@@ -367,3 +354,4 @@ const CatalogosDashboard = () => {
 };
 
 export default CatalogosDashboard;
+

@@ -104,15 +104,18 @@ const CatalogosDashboard = () => {
     if (!dateString) return null;
     
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return null;
+
     const months = [
       'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
       'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
     ];
     
+    const day = String(date.getDate()).padStart(2, '0');
     const month = months[date.getMonth()];
     const year = date.getFullYear();
     
-    return `${month} ${year}`;
+    return `${day} ${month} ${year}`;
   };
 
   const groupedCatalogos = catalogosStats.reduce((acc, catalogo) => {

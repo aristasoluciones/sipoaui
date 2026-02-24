@@ -25,6 +25,67 @@ interface CatalogoStats {
   isUnread: boolean;
 }
 
+type TrackerEntry = { is_unread: boolean; updated_at?: string | null };
+
+const TRACKER_KEY_BY_CATALOGO: Record<string, string> = {
+  partidas: 'partidas_presupuestales'
+};
+
+const TRACKER_KEYS_BY_CATALOGO: Record<string, string[]> = {
+  partidas: ['partidas_presupuestales', 'capitulos_presupuestales', 'rhpf_presupuestales', 'partidas']
+};
+
+const getTrackerKey = (catalogoKey: string): string =>
+  TRACKER_KEY_BY_CATALOGO[catalogoKey] || catalogoKey;
+
+const parseTrackerDate = (value?: string | null): Date | null => {
+  if (!value) return null;
+
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const normalized = value.trim();
+  const dmySlash = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const dmyDash = normalized.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  const match = dmySlash || dmyDash;
+  if (!match) return null;
+
+  const parsed = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const resolveTrackerEntry = (
+  catalogoKey: string,
+  updates: Record<string, TrackerEntry>
+): TrackerEntry => {
+  const candidateKeys = TRACKER_KEYS_BY_CATALOGO[catalogoKey] || [catalogoKey];
+  let isUnread = false;
+  let updatedAt: string | null = null;
+  let updatedAtDate: Date | null = null;
+
+  candidateKeys.forEach(key => {
+    const entry = updates[key];
+    if (!entry) return;
+
+    if (entry.is_unread) isUnread = true;
+
+    if (!entry.updated_at) return;
+    const parsed = parseTrackerDate(entry.updated_at);
+
+    if (!parsed) {
+      if (!updatedAt) updatedAt = entry.updated_at;
+      return;
+    }
+
+    if (!updatedAtDate || parsed > updatedAtDate) {
+      updatedAtDate = parsed;
+      updatedAt = entry.updated_at;
+    }
+  });
+
+  return { is_unread: isUnread, updated_at: updatedAt };
+};
+
 const CatalogosDashboard = () => {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
@@ -45,7 +106,7 @@ const CatalogosDashboard = () => {
   const handleCatalogoOpen = async (catalogo: CatalogoStats) => {
     if (catalogo.isUnread) {
       try {
-        await CatalogosActualizacionesService.markAsRead(catalogo.key);
+        await CatalogosActualizacionesService.markAsRead(getTrackerKey(catalogo.key));
         markCatalogoAsReadLocally(catalogo.key);
       } catch (error) {
       }
@@ -57,13 +118,15 @@ const CatalogosDashboard = () => {
   const loadCatalogosStats = async () => {
     try {
       setLoading(true);
-      let catalogosActualizaciones: Record<string, { is_unread: boolean; updated_at?: string | null }> = {};
+      let catalogosActualizaciones: Record<string, TrackerEntry> = {};
       try {
         catalogosActualizaciones = await CatalogosActualizacionesService.getAll();
       } catch (error) {
       }
 
       const stats: CatalogoStats[] = CATALOGOS_CONFIG.map(config => {
+        const trackerKey = getTrackerKey(config.key);
+        const trackerEntry = resolveTrackerEntry(config.key, catalogosActualizaciones);
         return {
           key: config.key,
           title: config.title,
@@ -71,8 +134,8 @@ const CatalogosDashboard = () => {
           category: config.category,
           route: config.route,
           hasAccess: hasAnyPermission(config.permissions || []),
-          lastUpdated: catalogosActualizaciones?.[config.key]?.updated_at || undefined,
-          isUnread: Boolean(catalogosActualizaciones?.[config.key]?.is_unread)
+          lastUpdated: trackerEntry.updated_at || catalogosActualizaciones?.[trackerKey]?.updated_at || undefined,
+          isUnread: Boolean(trackerEntry.is_unread || catalogosActualizaciones?.[trackerKey]?.is_unread)
         };
       });
 

@@ -18,6 +18,9 @@ const toBoolean = (value: unknown): boolean => {
   return false;
 };
 
+const hasValue = (value: unknown): boolean =>
+  value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
+
 const API_TO_CONFIG_KEY: Record<string, string> = {
   unidades: 'unidades',
   objetivos: 'objetivos',
@@ -27,7 +30,37 @@ const API_TO_CONFIG_KEY: Record<string, string> = {
   tipos_actividad: 'tipos-actividad',
   tipos_proyecto: 'tipo-proyecto',
   entregables: 'entregables',
-  beneficiarios: 'beneficiarios'
+  beneficiarios: 'beneficiarios',
+  capitulos_presupuestales: 'partidas_presupuestales',
+  partidas_presupuestales: 'partidas_presupuestales'
+};
+
+const parseDate = (value?: string | null): Date | null => {
+  if (!value) return null;
+
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const normalized = value.trim();
+  const dmySlash = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const dmyDash = normalized.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  const match = dmySlash || dmyDash;
+  if (!match) return null;
+
+  const parsed = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const pickLatestDate = (current?: string | null, incoming?: string | null): string | null => {
+  if (!current) return incoming ?? null;
+  if (!incoming) return current;
+
+  const currentDate = parseDate(current);
+  const incomingDate = parseDate(incoming);
+
+  if (currentDate && incomingDate) return incomingDate > currentDate ? incoming : current;
+  if (!currentDate && incomingDate) return incoming;
+  return current;
 };
 
 export const CatalogosActualizacionesService = {
@@ -51,19 +84,25 @@ export const CatalogosActualizacionesService = {
       Object.entries(rawData).forEach(([apiKey, value]) => {
         const configKey = API_TO_CONFIG_KEY[apiKey] || apiKey;
         if (typeof value === 'string') {
+          const previous = normalized[configKey];
           normalized[configKey] = {
-            is_unread: false,
-            updated_at: value
+            is_unread: Boolean(previous?.is_unread),
+            updated_at: pickLatestDate(previous?.updated_at, value)
           };
           return;
         }
 
-        const isUnreadRaw =
-          value?.is_unread ??
-          value?.unread ??
-          (value?.is_read !== undefined ? !toBoolean(value?.is_read) : undefined) ??
-          (value?.read !== undefined ? !toBoolean(value?.read) : undefined) ??
-          false;
+        let isUnreadRaw = false;
+
+        if (hasValue(value?.is_unread)) {
+          isUnreadRaw = toBoolean(value?.is_unread);
+        } else if (hasValue(value?.unread)) {
+          isUnreadRaw = toBoolean(value?.unread);
+        } else if (hasValue(value?.is_read)) {
+          isUnreadRaw = !toBoolean(value?.is_read);
+        } else if (hasValue(value?.read)) {
+          isUnreadRaw = !toBoolean(value?.read);
+        }
 
         const updatedAt =
           value?.updated_at ??
@@ -72,9 +111,10 @@ export const CatalogosActualizacionesService = {
           value?.fecha ??
           null;
 
+        const previous = normalized[configKey];
         normalized[configKey] = {
-          is_unread: toBoolean(isUnreadRaw),
-          updated_at: updatedAt
+          is_unread: Boolean(previous?.is_unread) || toBoolean(isUnreadRaw),
+          updated_at: pickLatestDate(previous?.updated_at, updatedAt)
         };
       });
 

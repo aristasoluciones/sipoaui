@@ -24,15 +24,23 @@ const hasValue = (value: unknown): boolean =>
 const API_TO_CONFIG_KEY: Record<string, string> = {
   unidades: 'unidades',
   objetivos: 'objetivos',
+  objetivos_estrategicos: 'objetivos',
   politicas: 'politicas',
   programas: 'programas',
   marcos_normativos: 'marcoNormativo',
+  marco_normativo: 'marcoNormativo',
+  'marco-normativo': 'marcoNormativo',
   tipos_actividad: 'tipos-actividad',
+  'tipos-actividad': 'tipos-actividad',
   tipos_proyecto: 'tipo-proyecto',
+  tipo_proyecto: 'tipo-proyecto',
+  'tipo-proyecto': 'tipo-proyecto',
   entregables: 'entregables',
   beneficiarios: 'beneficiarios',
+  partidas: 'partidas_presupuestales',
   capitulos_presupuestales: 'partidas_presupuestales',
-  partidas_presupuestales: 'partidas_presupuestales'
+  partidas_presupuestales: 'partidas_presupuestales',
+  rhpf_presupuestales: 'partidas_presupuestales'
 };
 
 const parseDate = (value?: string | null): Date | null => {

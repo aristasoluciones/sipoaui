@@ -35,8 +35,41 @@ const TRACKER_KEYS_BY_CATALOGO: Record<string, string[]> = {
   partidas: ['partidas_presupuestales', 'capitulos_presupuestales', 'rhpf_presupuestales', 'partidas']
 };
 
+const TRACKER_READ_KEYS_BY_CATALOGO: Record<string, string[]> = {
+  partidas: ['partidas_presupuestales', 'capitulos_presupuestales', 'rhpf_presupuestales', 'partidas'],
+  'tipos-actividad': ['tipos_actividad', 'tipos-actividad'],
+  'tipo-proyecto': ['tipos_proyecto', 'tipo-proyecto'],
+  marcoNormativo: ['marcos_normativos', 'marco_normativo', 'marco-normativo', 'marcoNormativo'],
+  objetivos: ['objetivos', 'objetivos_estrategicos']
+};
+
 const getTrackerKey = (catalogoKey: string): string =>
   TRACKER_KEY_BY_CATALOGO[catalogoKey] || catalogoKey;
+
+const toSnakeCase = (value: string): string =>
+  value
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[-\s]+/g, '_')
+    .toLowerCase();
+
+const toKebabCase = (value: string): string =>
+  toSnakeCase(value).replace(/_/g, '-');
+
+const getTrackerReadKeys = (catalogoKey: string): string[] => {
+  const trackerKey = getTrackerKey(catalogoKey);
+  const explicit = TRACKER_READ_KEYS_BY_CATALOGO[catalogoKey] || [];
+  const keys = [
+    catalogoKey,
+    trackerKey,
+    toSnakeCase(catalogoKey),
+    toSnakeCase(trackerKey),
+    toKebabCase(catalogoKey),
+    toKebabCase(trackerKey),
+    ...explicit
+  ];
+
+  return Array.from(new Set(keys.map(key => key.trim()).filter(Boolean)));
+};
 
 const parseTrackerDate = (value?: string | null): Date | null => {
   if (!value) return null;
@@ -106,8 +139,14 @@ const CatalogosDashboard = () => {
   const handleCatalogoOpen = async (catalogo: CatalogoStats) => {
     if (catalogo.isUnread) {
       try {
-        await CatalogosActualizacionesService.markAsRead(getTrackerKey(catalogo.key));
-        markCatalogoAsReadLocally(catalogo.key);
+        const trackerKeys = getTrackerReadKeys(catalogo.key);
+        const markResults = await Promise.allSettled(
+          trackerKeys.map(trackerKey => CatalogosActualizacionesService.markAsRead(trackerKey))
+        );
+
+        if (markResults.some(result => result.status === 'fulfilled')) {
+          markCatalogoAsReadLocally(catalogo.key);
+        }
       } catch (error) {
       }
     }

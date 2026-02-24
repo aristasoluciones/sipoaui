@@ -22,6 +22,7 @@ interface CatalogoStats {
   route: string;
   hasAccess: boolean;
   lastUpdated?: string;
+  isUnread: boolean;
 }
 
 const CatalogosDashboard = () => {
@@ -32,12 +33,33 @@ const CatalogosDashboard = () => {
 
   const catalogosPermissions = useAllPermissions(user);
   const { hasAnyPermission } = usePermissions();
+
+  const markCatalogoAsReadLocally = (catalogoKey: string) => {
+    setCatalogosStats(current =>
+      current.map(item =>
+        item.key === catalogoKey ? { ...item, isUnread: false } : item
+      )
+    );
+  };
+
+  const handleCatalogoOpen = async (catalogo: CatalogoStats) => {
+    if (catalogo.isUnread) {
+      try {
+        await CatalogosActualizacionesService.markAsRead(catalogo.key);
+        markCatalogoAsReadLocally(catalogo.key);
+      } catch (error) {
+      }
+    }
+
+    router.push(catalogo.route);
+  };
+
   const loadCatalogosStats = async () => {
     try {
       setLoading(true);
-      let catalogosLastUpdated: Record<string, string> = {};
+      let catalogosActualizaciones: Record<string, { is_unread: boolean; updated_at?: string | null }> = {};
       try {
-        catalogosLastUpdated = await CatalogosActualizacionesService.getAll();
+        catalogosActualizaciones = await CatalogosActualizacionesService.getAll();
       } catch (error) {
       }
 
@@ -49,7 +71,8 @@ const CatalogosDashboard = () => {
           category: config.category,
           route: config.route,
           hasAccess: hasAnyPermission(config.permissions || []),
-          lastUpdated: catalogosLastUpdated?.[config.key]
+          lastUpdated: catalogosActualizaciones?.[config.key]?.updated_at || undefined,
+          isUnread: Boolean(catalogosActualizaciones?.[config.key]?.is_unread)
         };
       });
 
@@ -103,17 +126,33 @@ const CatalogosDashboard = () => {
   const formatLastUpdated = (dateString?: string) => {
     if (!dateString) return null;
     
-    const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) return null;
+    const directDate = new Date(dateString);
+    let parsedDate = directDate;
+
+    if (Number.isNaN(directDate.getTime())) {
+      const normalized = dateString.trim();
+      const dmySlash = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      const dmyDash = normalized.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+
+      if (dmySlash || dmyDash) {
+        const match = dmySlash || dmyDash;
+        const day = Number(match?.[1]);
+        const month = Number(match?.[2]) - 1;
+        const year = Number(match?.[3]);
+        parsedDate = new Date(year, month, day);
+      }
+    }
+
+    if (Number.isNaN(parsedDate.getTime())) return dateString;
 
     const months = [
       'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
       'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
     ];
     
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = months[date.getMonth()];
-    const year = date.getFullYear();
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+    const month = months[parsedDate.getMonth()];
+    const year = parsedDate.getFullYear();
     
     return `${day} ${month} ${year}`;
   };
@@ -126,18 +165,37 @@ const CatalogosDashboard = () => {
     return acc;
   }, {} as Record<string, CatalogoStats[]>);
 
+  const renderCatalogoBadges = (catalogo: CatalogoStats, muted = false) => {
+    const hasDate = Boolean(catalogo.lastUpdated);
+    const hasUnread = catalogo.isUnread;
+
+    if (!hasDate && !hasUnread) return null;
+
+    return (
+      <div className={`catalogo-badges ${muted ? 'catalogo-badges-muted' : ''}`}>
+        {hasUnread && (
+          <div className="catalogo-updated-badge">
+            <span className="catalogo-updated-dot"></span>
+            <span>Actualizado</span>
+          </div>
+        )}
+        {hasDate && (
+          <div className="last-updated-badge">
+            <i className="pi pi-clock"></i>
+            <span>{formatLastUpdated(catalogo.lastUpdated)}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const catalogoTemplate = (catalogo: CatalogoStats) => {
     if (!catalogo.hasAccess) {
       return (
         <div className="col-12 sm:col-6 lg:col-4 xl:col-3">
-          <div className="card h-full surface-100 catalogo-card">
+          <div className={`card h-full surface-100 catalogo-card ${catalogo.isUnread ? 'catalogo-card-unread' : ''}`}>
             {/* Etiqueta flotante de última actualización */}
-            {catalogo.lastUpdated && (
-              <div className="last-updated-badge opacity-70">
-                <i className="pi pi-clock mr-1"></i>
-                <span>{formatLastUpdated(catalogo.lastUpdated)}</span>
-              </div>
-            )}
+            {renderCatalogoBadges(catalogo, true)}
             
             <div className="text-center">
               <div className="flex align-items-center justify-content-center bg-gray-100 border-round mb-3 mx-auto"
@@ -157,16 +215,11 @@ const CatalogosDashboard = () => {
 
     return (
       <div className="col-12 sm:col-6 lg:col-4 xl:col-3">
-        <div className="card h-full cursor-pointer hover:shadow-3 transition-duration-200 catalogo-card">
+        <div className={`card h-full cursor-pointer hover:shadow-3 transition-duration-200 catalogo-card ${catalogo.isUnread ? 'catalogo-card-unread' : ''}`}>
           {/* Etiqueta flotante de última actualización */}
-          {catalogo.lastUpdated && (
-            <div className="last-updated-badge">
-              <i className="pi pi-clock mr-1"></i>
-              <span>{formatLastUpdated(catalogo.lastUpdated)}</span>
-            </div>
-          )}
+          {renderCatalogoBadges(catalogo)}
           
-          <div className="text-center" onClick={() => router.push(catalogo.route)}>
+          <div className="text-center" onClick={() => handleCatalogoOpen(catalogo)}>
             <div className="flex align-items-center justify-content-center bg-primary-100 border-round mb-3 mx-auto"
                  style={{ width: '3rem', height: '3rem' }}>
               <i className={`${catalogo.icon} text-primary-600 text-2xl`}></i>
@@ -181,7 +234,7 @@ const CatalogosDashboard = () => {
                 className="w-full"
                 onClick={(e) => {
                   e.stopPropagation();
-                  router.push(catalogo.route);
+                  handleCatalogoOpen(catalogo);
                 }}
               />
             </div>
@@ -302,27 +355,69 @@ const CatalogosDashboard = () => {
           overflow: visible !important;
         }
 
-        .last-updated-badge {
+        .catalogo-card-unread {
+          border: 2px dashed #ec4899 !important;
+          box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.14), 0 10px 22px rgba(236, 72, 153, 0.2) !important;
+          background: linear-gradient(180deg, rgba(252, 231, 243, 0.62) 0%, rgba(255, 255, 255, 1) 45%);
+        }
+
+        .catalogo-badges {
           position: absolute;
-          top: -8px;
-          right: -8px;
+          top: -12px;
+          right: -10px;
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          z-index: 10;
+        }
+
+        .catalogo-badges-muted {
+          opacity: 0.78;
+        }
+
+        .last-updated-badge {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
-          padding: 0.375rem 0.75rem;
+          padding: 0.34rem 0.72rem;
           border-radius: 1rem;
           font-size: 0.75rem;
           font-weight: 500;
           display: flex;
           align-items: center;
           gap: 0.25rem;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          z-index: 10;
+          box-shadow: 0 4px 10px rgba(102, 126, 234, 0.34);
           white-space: nowrap;
           border: 2px solid var(--surface-card);
-          animation: fadeInScale 0.3s ease-out;
         }
 
-        .last-updated-badge i {
+        .catalogo-updated-badge {
+          background: linear-gradient(180deg, #fff8fc 0%, #ffeaf5 100%);
+          color: #be185d;
+          padding: 0.34rem 0.72rem;
+          border-radius: 1rem;
+          font-size: 0.72rem;
+          font-weight: 700;
+          letter-spacing: 0.01em;
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          box-shadow: 0 3px 8px rgba(236, 72, 153, 0.2);
+          border: 2px solid #f9a8d4;
+          text-transform: uppercase;
+          animation: badgePulse 1.6s ease-in-out infinite;
+        }
+
+        .catalogo-updated-dot {
+          width: 0.38rem;
+          height: 0.38rem;
+          border-radius: 999px;
+          background: #ec4899;
+          box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.45);
+          animation: dotPing 1.6s ease-out infinite;
+        }
+
+        .last-updated-badge i,
+        .catalogo-updated-badge i {
           font-size: 0.625rem;
         }
 
@@ -337,17 +432,34 @@ const CatalogosDashboard = () => {
           }
         }
 
-        .catalogo-card:hover .last-updated-badge {
+        @keyframes badgePulse {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-1px); }
+        }
+
+        @keyframes dotPing {
+          0% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.45); }
+          70% { box-shadow: 0 0 0 7px rgba(236, 72, 153, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0); }
+        }
+
+        .catalogo-card:hover .last-updated-badge,
+        .catalogo-card:hover .catalogo-updated-badge {
           transform: scale(1.05);
           transition: transform 0.2s ease;
         }
 
         /* Responsive adjustments */
         @media (max-width: 768px) {
-          .last-updated-badge {
-            top: -6px;
+          .catalogo-badges {
+            top: -10px;
             right: -6px;
-            padding: 0.25rem 0.5rem;
+            gap: 0.35rem;
+          }
+
+          .catalogo-updated-badge,
+          .last-updated-badge {
+            padding: 0.26rem 0.52rem;
             font-size: 0.7rem;
           }
         }

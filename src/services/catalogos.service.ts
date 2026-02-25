@@ -4,21 +4,18 @@ import { CATALOGOS_CONFIG } from '@/src/config/catalogos';
 
 export class CatalogoService {
   private catalogoKey: string;
-  private hasApiAccess: boolean;
   private apiEndpoint: string;
 
   constructor(catalogoKey: string) {
     this.catalogoKey = catalogoKey;
-    
-    // Obtener la configuración del catálogo
+
     const config = CATALOGOS_CONFIG.find(c => c.key === catalogoKey);
-    this.hasApiAccess = config?.hasApiAccess !== false; // Por defecto true si no está definido
     this.apiEndpoint = config?.apiEndpoint || `/api/catalogos/${this.catalogoKey}`;
   }
 
   private shouldUseMocks(): boolean {
-    // Usar mocks si: está habilitado globalmente O el catálogo no tiene acceso a API
-    return MOCK_CONFIG.enabled || !this.hasApiAccess;
+    // Catalogos siempre usan API real
+    return false;
   }
 
   private getApiEndpoint() {
@@ -45,7 +42,7 @@ export class CatalogoService {
         throw new Error('Elemento no encontrado');
       }
     }
-    
+
     return await http.get(`${this.getApiEndpoint()}/${id}`);
   }
 
@@ -61,12 +58,11 @@ export class CatalogoService {
       mockData.push(newItem);
       return mockUtils.mockResponse(newItem, true, 'Elemento creado exitosamente');
     }
-    
-    return await http.post(this.getApiEndpoint(), data);
-  } 
-  
-  async update(id: number, data: any) {
 
+    return await http.post(this.getApiEndpoint(), data);
+  }
+
+  async update(id: number, data: any) {
     if (this.shouldUseMocks()) {
       await mockUtils.delay();
       const mockData = this.getMockData();
@@ -82,7 +78,7 @@ export class CatalogoService {
         throw new Error('Elemento no encontrado');
       }
     }
-    
+
     return await http.put(`${this.getApiEndpoint()}/${id}`, data);
   }
 
@@ -98,7 +94,7 @@ export class CatalogoService {
         throw new Error('Elemento no encontrado');
       }
     }
-    
+
     return await http.delete(`${this.getApiEndpoint()}/${id}`);
   }
 
@@ -106,14 +102,15 @@ export class CatalogoService {
     if (this.shouldUseMocks()) {
       await mockUtils.delay();
       const data = this.getMockData();
-      const filtered = data.filter((item: any) => 
-        item.nombre?.toLowerCase().includes(query.toLowerCase()) ||
-        item.codigo?.toLowerCase().includes(query.toLowerCase()) ||
-        item.descripcion?.toLowerCase().includes(query.toLowerCase())
+      const filtered = data.filter(
+        (item: any) =>
+          item.nombre?.toLowerCase().includes(query.toLowerCase()) ||
+          item.codigo?.toLowerCase().includes(query.toLowerCase()) ||
+          item.descripcion?.toLowerCase().includes(query.toLowerCase())
       );
       return mockUtils.mockResponse(filtered);
     }
-    
+
     return await http.get(`${this.getApiEndpoint()}/search?q=${encodeURIComponent(query)}`);
   }
 
@@ -124,17 +121,15 @@ export class CatalogoService {
       const filtered = data.filter((item: any) => item.estado === status);
       return mockUtils.mockResponse(filtered);
     }
-    
+
     return await http.get(`${this.getApiEndpoint()}?estado=${status}`);
   }
 }
 
-// Factory para crear servicios de catálogos específicos
 export const createCatalogoService = (catalogoKey: string) => {
   return new CatalogoService(catalogoKey);
 };
 
-// Servicios predefinidos para cada catálogo
 export const unidadesService = new CatalogoService('unidades');
 export const objetivosService = new CatalogoService('objetivos-estrategicos');
 export const politicasService = new CatalogoService('politicas');
@@ -149,13 +144,11 @@ export const cargosService = new CatalogoService('cargos');
 export const viaticosService = new CatalogoService('viaticos');
 export const combustiblesService = new CatalogoService('combustibles');
 
-// Servicio para tipo de proyectos (legacy support)
 export const TipoProyectoService = new CatalogoService('tipo-proyecto');
 
-// Hook para verificar permisos de catálogos
 export const useCatalogoPermissions = (catalogoKey: string, user: any) => {
   const basePermission = `catalogos.${catalogoKey}`;
-  
+
   return {
     canRead: user?.permissions?.includes(`${basePermission}.read`) || false,
     canCreate: user?.permissions?.includes(`${basePermission}.create`) || false,

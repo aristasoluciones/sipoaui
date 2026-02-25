@@ -138,7 +138,7 @@ export const CATALOGOS_CONFIG: CatalogoConfig[] = [
     route: '/catalogos/partidas',
     apiEndpoint: '/api/catalogos/partidas',
     permissions: ['catalogos.recursos_humanos_presupuestarios_y_financieros.partidas_presupuestarias'],
-    hasApiAccess: false,
+    hasApiAccess: true,
     customComponent: true, // Catálogo con interfaz personalizada
   },
   {
@@ -149,7 +149,7 @@ export const CATALOGOS_CONFIG: CatalogoConfig[] = [
     route: '/catalogos/precios',
     apiEndpoint: '/api/catalogos/precios',
     permissions: ['catalogos.recursos_humanos_presupuestarios_y_financieros.precios'],
-    hasApiAccess: false,
+    hasApiAccess: true,
     customComponent: true, // Catálogo con interfaz personalizada
   },
   {
@@ -160,7 +160,7 @@ export const CATALOGOS_CONFIG: CatalogoConfig[] = [
     route: '/catalogos/cargos',
     apiEndpoint: '/api/catalogos/cargos',
     permissions: ['catalogos.recursos_humanos_presupuestarios_y_financieros.cargos_y_puestos'],
-    hasApiAccess: false,
+    hasApiAccess: true,
     customComponent: true, // Catálogo con interfaz personalizada
   },
 
@@ -173,7 +173,7 @@ export const CATALOGOS_CONFIG: CatalogoConfig[] = [
     route: '/catalogos/viaticos',
     apiEndpoint: '/api/catalogos/viaticos',
     permissions: ['catalogos.tabuladores.viaticos'],
-    hasApiAccess: false,
+    hasApiAccess: true,
     customComponent: true, // Catálogo con interfaz personalizada
   },
   {
@@ -184,7 +184,7 @@ export const CATALOGOS_CONFIG: CatalogoConfig[] = [
     route: '/catalogos/combustibles',
     apiEndpoint: '/api/catalogos/combustibles',
     permissions: ['catalogos.tabuladores.combustibles'],
-    hasApiAccess: false,
+    hasApiAccess: true,
     customComponent: true, // Catálogo con interfaz personalizada
   }
 ];

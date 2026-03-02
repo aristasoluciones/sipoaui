@@ -114,28 +114,49 @@ export default function PreciosPrototypeForm({ mode }: Props) {
     const loadFromStorage = () => {
         try {
             // Migración retrocompatible: si no hay categorías, intentar cargar los tipos antiguos
-            let rawCategorias = localStorage.getItem(STORAGE_KEY_CATEGORIAS);
-            if (!rawCategorias) {
-                rawCategorias = localStorage.getItem('sipoa_tipo_precios_v2');
-                if (rawCategorias) {
-                    localStorage.setItem(STORAGE_KEY_CATEGORIAS, rawCategorias);
+            let rawCat = localStorage.getItem(STORAGE_KEY_CATEGORIAS);
+            if (!rawCat) {
+                rawCat = localStorage.getItem('sipoa_tipo_precios_v2');
+                if (rawCat) {
+                    localStorage.setItem(STORAGE_KEY_CATEGORIAS, rawCat);
                 }
             }
 
-            const rawPrecios = localStorage.getItem(STORAGE_KEY_PRECIOS);
-            if (rawCategorias) setCategorias(JSON.parse(rawCategorias) as CategoriaPrecio[]);
+            const rawItems = localStorage.getItem(STORAGE_KEY_PRECIOS);
+            if (!rawCat) {
+                const initial = [{ id: 999999, nombre: COMBUSTIBLE_NOMBRE }];
+                setCategorias(initial);
+                localStorage.setItem(STORAGE_KEY_CATEGORIAS, JSON.stringify(initial));
+            } else {
+                let loadedCategorias = JSON.parse(rawCat) as CategoriaPrecio[];
+                if (!loadedCategorias.some((c) => c.nombre === COMBUSTIBLE_NOMBRE)) {
+                    loadedCategorias = [{ id: 999999, nombre: COMBUSTIBLE_NOMBRE }, ...loadedCategorias];
+                    localStorage.setItem(STORAGE_KEY_CATEGORIAS, JSON.stringify(loadedCategorias));
+                }
+                setCategorias(loadedCategorias);
+            }
 
-            if (rawPrecios) {
-                const parsedPrecios = JSON.parse(rawPrecios) as any[];
+            if (!rawItems) {
+                setItems([]);
+            } else {
+                // Backward compatibility migraciones
+                const parsed = JSON.parse(rawItems);
                 let migrated = false;
-                const loadedItems: StoredPrecio[] = parsedPrecios.map((p) => {
-                    // Migración retrocompatible de precios que tenían tipo_precio_id
-                    if (p.tipo_precio_id !== undefined) {
+                const loadedItems = parsed.map((item: any) => {
+                    let newItem = { ...item };
+                    // 1. Migrar tipo_precio_id -> categoria_id
+                    if (newItem.tipo_precio_id !== undefined && newItem.categoria_id === undefined) {
+                        newItem.categoria_id = newItem.tipo_precio_id;
+                        delete newItem.tipo_precio_id;
                         migrated = true;
-                        p.categoria_id = p.tipo_precio_id;
-                        delete p.tipo_precio_id;
                     }
-                    return p as StoredPrecio;
+                    // 2. Migrar subtipo -> subtipo_combustible
+                    if (newItem.subtipo !== undefined && newItem.subtipo_combustible === undefined) {
+                        newItem.subtipo_combustible = newItem.subtipo;
+                        delete newItem.subtipo;
+                        migrated = true;
+                    }
+                    return newItem;
                 });
                 setItems(loadedItems);
                 if (migrated) {
@@ -143,7 +164,8 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                 }
             }
         } catch {
-            setCategorias([]);
+            const initial = [{ id: 999999, nombre: COMBUSTIBLE_NOMBRE }];
+            setCategorias(initial);
             setItems([]);
         }
     };
@@ -164,14 +186,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
 
     // ─── Categoría Combustible (reservada) ──────────────────────────────────────────
 
-    const ensureCombustibleCategoria = useCallback((currentCategorias: CategoriaPrecio[]): CategoriaPrecio[] => {
-        if (currentCategorias.some((c) => c.nombre === COMBUSTIBLE_NOMBRE)) return currentCategorias;
-        // Solo agregar si realmente estamos seguros de que no está (prevenir loops iniciales)
-        // Pero no vaciar las demás categorías en el proceso
-        return [{ id: Date.now(), nombre: COMBUSTIBLE_NOMBRE }, ...currentCategorias];
-    }, []);
-
-    const categoriasConCombustible = useMemo(() => ensureCombustibleCategoria(categorias), [categorias, ensureCombustibleCategoria]);
+    const categoriasConCombustible = categorias;
 
     const categoriaCombustibleId = useMemo(() => categoriasConCombustible.find((c) => c.nombre === COMBUSTIBLE_NOMBRE)?.id ?? null, [categoriasConCombustible]);
 
@@ -271,9 +286,13 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
+        link.href = url;
         link.download = `${isCombustiblesView ? 'combustibles' : 'precios'}_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
         link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
         success('Archivo exportado');
     }, [filteredItems, isCombustiblesView, getCategoriaNombre, error, success]);
 

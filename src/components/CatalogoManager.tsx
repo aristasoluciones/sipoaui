@@ -1029,7 +1029,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                                     {hasHeaderError
                                         ? 'Se detectaron errores en encabezados (fila 1 del archivo).'
                                         : showErrorRowsPreview
-                                        ? 'Mostrando filas con error reportadas por el backend (numeracion original).'
+                                        ? 'Mostrando filas con error reportadas por el backend (numeración original).'
                                         : 'Las filas con error se resaltan en rojo.'}
                                 </small>
                             </div>
@@ -1049,7 +1049,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                                         <div key={`import-error-${index}`} className="text-sm mb-2 text-red-700">
                                             <span className="font-medium">Error {index + 1}:</span> {errorItem.row !== undefined ? `Fila ${errorItem.row}. ` : ''}
                                             {errorItem.field ? `${errorItem.field}: ` : ''}
-                                            {errorItem.message || 'Error de validacion'}
+                                            {errorItem.message || 'Error de validación'}
                                         </div>
                                     ))}
                                 </div>

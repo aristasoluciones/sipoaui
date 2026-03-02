@@ -19,6 +19,7 @@ import { usePermissions } from '@/src/hooks/usePermissions';
 import { useNotification } from '@/layout/context/notificationContext';
 import { formatApiError } from '@/src/utils';
 import http from '@/src/lib/axios';
+import PreciosPrototypeForm from '@/src/components/catalogos/PreciosPrototypeForm';
 import * as yup from 'yup';
 
 interface CatalogoManagerProps {
@@ -139,15 +140,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
     const validationSchema = useMemo(() => createValidationSchema(), [createValidationSchema]);
 
     const parseItemDate = useCallback((item: any): Date | null => {
-        const rawDate =
-            item?.updated_at ||
-            item?.updatedAt ||
-            item?.fechaModificacion ||
-            item?.fecha_actualizacion ||
-            item?.fechaActualizacion ||
-            item?.created_at ||
-            item?.createdAt ||
-            item?.fechaCreacion;
+        const rawDate = item?.updated_at || item?.updatedAt || item?.fechaModificacion || item?.fecha_actualizacion || item?.fechaActualizacion || item?.created_at || item?.createdAt || item?.fechaCreacion;
 
         if (!rawDate) return null;
 
@@ -173,19 +166,25 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
         return Number.isNaN(parsed.getTime()) ? null : parsed;
     }, []);
 
-    const getDateGroupKey = useCallback((item: any): string => {
-        const date = parseItemDate(item);
-        if (!date) return '0000-00-00';
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }, [parseItemDate]);
+    const getDateGroupKey = useCallback(
+        (item: any): string => {
+            const date = parseItemDate(item);
+            if (!date) return '0000-00-00';
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        },
+        [parseItemDate]
+    );
 
-    const getDateTimeValue = useCallback((item: any): number => {
-        const date = parseItemDate(item);
-        return date ? date.getTime() : 0;
-    }, [parseItemDate]);
+    const getDateTimeValue = useCallback(
+        (item: any): number => {
+            const date = parseItemDate(item);
+            return date ? date.getTime() : 0;
+        },
+        [parseItemDate]
+    );
 
     const formatDateGroupLabel = (groupKey: string): string => {
         if (groupKey === '0000-00-00') return 'Sin fecha';
@@ -194,10 +193,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
 
         const groupDate = new Date(year, month - 1, day);
         const today = new Date();
-        const isToday =
-            groupDate.getFullYear() === today.getFullYear() &&
-            groupDate.getMonth() === today.getMonth() &&
-            groupDate.getDate() === today.getDate();
+        const isToday = groupDate.getFullYear() === today.getFullYear() && groupDate.getMonth() === today.getMonth() && groupDate.getDate() === today.getDate();
 
         const formatted = groupDate.toLocaleDateString('es-MX', {
             day: '2-digit',
@@ -252,6 +248,13 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
 
     // Validar si el catálogo tiene componente personalizado
     if (config.customComponent) {
+        if (config.key === 'precios') {
+            return <PreciosPrototypeForm mode="master" />;
+        }
+        if (config.key === 'combustibles') {
+            return <PreciosPrototypeForm mode="combustibles" />;
+        }
+
         return (
             <div className="card">
                 <div className="flex flex-column align-items-center justify-content-center py-8">
@@ -666,13 +669,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
     const isHeaderErrorMessage = (message?: string) => {
         if (!message) return false;
         const normalized = message.toLowerCase();
-        return (
-            normalized.includes('encabezad') ||
-            normalized.includes('header') ||
-            normalized.includes('estructura requerida') ||
-            normalized.includes('columnas obligatorias') ||
-            normalized.includes('columnas no permitidas')
-        );
+        return normalized.includes('encabezad') || normalized.includes('header') || normalized.includes('estructura requerida') || normalized.includes('columnas obligatorias') || normalized.includes('columnas no permitidas');
     };
 
     const hasHeaderError = (importResult?.errors || []).some((item) => isHeaderErrorMessage(item.message));
@@ -1032,8 +1029,8 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                                     {hasHeaderError
                                         ? 'Se detectaron errores en encabezados (fila 1 del archivo).'
                                         : showErrorRowsPreview
-                                          ? 'Mostrando filas con error reportadas por el backend (numeracion original).'
-                                          : 'Las filas con error se resaltan en rojo.'}
+                                        ? 'Mostrando filas con error reportadas por el backend (numeracion original).'
+                                        : 'Las filas con error se resaltan en rojo.'}
                                 </small>
                             </div>
                         </div>
@@ -1050,8 +1047,7 @@ const CatalogoManager: React.FC<CatalogoManagerProps> = ({ config, data, onSave,
                                 <div className="max-h-15rem overflow-auto border-top-1 border-red-300 pt-2">
                                     {importResult.errors.map((errorItem, index) => (
                                         <div key={`import-error-${index}`} className="text-sm mb-2 text-red-700">
-                                            <span className="font-medium">Error {index + 1}:</span>{' '}
-                                            {errorItem.row !== undefined ? `Fila ${errorItem.row}. ` : ''}
+                                            <span className="font-medium">Error {index + 1}:</span> {errorItem.row !== undefined ? `Fila ${errorItem.row}. ` : ''}
                                             {errorItem.field ? `${errorItem.field}: ` : ''}
                                             {errorItem.message || 'Error de validacion'}
                                         </div>

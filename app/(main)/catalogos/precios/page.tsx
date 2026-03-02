@@ -1,15 +1,9 @@
 'use client';
 
-import CatalogoBasePage from '@/src/components/CatalogoBasePage';
+import PreciosPrototypeForm from '@/src/components/catalogos/PreciosPrototypeForm';
 
 const PreciosPage = () => {
-  return (
-    <CatalogoBasePage
-      catalogoKey="precios"
-      title="Precios"
-      description="Gestión de precios y tarifas institucionales"
-    />
-  );
+    return <PreciosPrototypeForm mode="master" />;
 };
 
 export default PreciosPage;

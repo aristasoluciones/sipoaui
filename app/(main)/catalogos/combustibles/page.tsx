@@ -1,15 +1,9 @@
 'use client';
 
-import CatalogoBasePage from '@/src/components/CatalogoBasePage';
+import PreciosPrototypeForm from '@/src/components/catalogos/PreciosPrototypeForm';
 
 const CombustiblesPage = () => {
-  return (
-    <CatalogoBasePage
-      catalogoKey="combustibles"
-      title="Combustibles"
-      description="Gestión de precios de combustibles por región"
-    />
-  );
+    return <PreciosPrototypeForm mode="combustibles" />;
 };
 
 export default CombustiblesPage;

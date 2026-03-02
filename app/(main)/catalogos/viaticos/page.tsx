@@ -1,15 +1,9 @@
 'use client';
 
-import CatalogoBasePage from '@/src/components/CatalogoBasePage';
+import ViaticosPrototypeForm from '@/src/components/catalogos/ViaticosPrototypeForm';
 
 const ViaticosPage = () => {
-  return (
-    <CatalogoBasePage
-      catalogoKey="viaticos"
-      title="Viáticos"
-      description="Gestión de tarifas de viáticos por zona geográfica"
-    />
-  );
+    return <ViaticosPrototypeForm />;
 };
 
 export default ViaticosPage;

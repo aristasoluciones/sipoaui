@@ -48,6 +48,7 @@ type Props = {
 const STORAGE_KEY_PRECIOS = 'sipoa_precios_v2';
 const STORAGE_KEY_CATEGORIAS = 'sipoa_categoria_precios_v2';
 const COMBUSTIBLE_NOMBRE = 'Combustible';
+const COMBUSTIBLE_CATEGORIA_ID = -1; // ID estable/constante para la categoría reservada "Combustible"
 
 const SUBTIPO_COMBUSTIBLE_OPTIONS = [
     { label: 'Magna', value: 'Magna' },
@@ -123,7 +124,22 @@ export default function PreciosPrototypeForm({ mode }: Props) {
             }
 
             const rawPrecios = localStorage.getItem(STORAGE_KEY_PRECIOS);
-            if (rawCategorias) setCategorias(JSON.parse(rawCategorias) as CategoriaPrecio[]);
+            let loadedCategorias: CategoriaPrecio[] = rawCategorias ? (JSON.parse(rawCategorias) as CategoriaPrecio[]) : [];
+
+            // Migrar categoría "Combustible" a ID estable si tenía un ID dinámico (Date.now())
+            let categoriasMigrated = false;
+            const combustibleCat = loadedCategorias.find((c) => c.nombre === COMBUSTIBLE_NOMBRE);
+            let oldCombustibleId: number | null = null;
+            if (combustibleCat && combustibleCat.id !== COMBUSTIBLE_CATEGORIA_ID) {
+                oldCombustibleId = combustibleCat.id;
+                loadedCategorias = loadedCategorias.map((c) => (c.id === oldCombustibleId ? { ...c, id: COMBUSTIBLE_CATEGORIA_ID } : c));
+                categoriasMigrated = true;
+            }
+
+            if (categoriasMigrated) {
+                localStorage.setItem(STORAGE_KEY_CATEGORIAS, JSON.stringify(loadedCategorias));
+            }
+            setCategorias(loadedCategorias);
 
             if (rawPrecios) {
                 const parsedPrecios = JSON.parse(rawPrecios) as any[];
@@ -134,6 +150,11 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                         migrated = true;
                         p.categoria_id = p.tipo_precio_id;
                         delete p.tipo_precio_id;
+                    }
+                    // Migrar referencias al ID dinámico de Combustible al ID estable
+                    if (oldCombustibleId !== null && p.categoria_id === oldCombustibleId) {
+                        migrated = true;
+                        p.categoria_id = COMBUSTIBLE_CATEGORIA_ID;
                     }
                     return p as StoredPrecio;
                 });
@@ -166,9 +187,8 @@ export default function PreciosPrototypeForm({ mode }: Props) {
 
     const ensureCombustibleCategoria = useCallback((currentCategorias: CategoriaPrecio[]): CategoriaPrecio[] => {
         if (currentCategorias.some((c) => c.nombre === COMBUSTIBLE_NOMBRE)) return currentCategorias;
-        // Solo agregar si realmente estamos seguros de que no está (prevenir loops iniciales)
-        // Pero no vaciar las demás categorías en el proceso
-        return [{ id: Date.now(), nombre: COMBUSTIBLE_NOMBRE }, ...currentCategorias];
+        // Usar ID constante para evitar que cambie entre recargas
+        return [{ id: COMBUSTIBLE_CATEGORIA_ID, nombre: COMBUSTIBLE_NOMBRE }, ...currentCategorias];
     }, []);
 
     const categoriasConCombustible = useMemo(() => ensureCombustibleCategoria(categorias), [categorias, ensureCombustibleCategoria]);
@@ -271,9 +291,12 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
+        link.href = url;
         link.download = `${isCombustiblesView ? 'combustibles' : 'precios'}_${new Date().toISOString().slice(0, 10)}.csv`;
         link.click();
+        URL.revokeObjectURL(url);
+        link.remove();
         success('Archivo exportado');
     }, [filteredItems, isCombustiblesView, getCategoriaNombre, error, success]);
 

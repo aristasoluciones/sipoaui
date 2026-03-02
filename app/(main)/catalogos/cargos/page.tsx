@@ -169,7 +169,11 @@ const CedulaCargosPage = () => {
         }
       }
 
-      // Si no hay datos validos, restaurar automaticamente una cedula demo.
+      // Si no hay datos validos, restaurar automaticamente una cedula demo (solo si nunca se sembró antes).
+      if (localStorage.getItem(SEEDED_KEY)) {
+        setCedulas([]);
+        return;
+      }
       const demo = getCedulaDemoFromExcel();
       const adscripcion = unidadesData.find((u: any) =>
         String(u.nombre || '')
@@ -221,7 +225,7 @@ const CedulaCargosPage = () => {
 
     // Validaciones
     if (!editingCedula.denominacion || !editingCedula.clave) {
-      error('Denominacion y clave son requeridos');
+      error('Denominación y clave son requeridos');
       return;
     }
 
@@ -243,17 +247,17 @@ const CedulaCargosPage = () => {
 
   const deleteCedula = (cedula: Cedula) => {
     confirmDialog({
-      message: `Estas seguro de eliminar la cedula "${cedula.denominacion}"?`,
-      header: 'Confirmar eliminacion',
+      message: `¿Estás seguro de eliminar la cédula "${cedula.denominacion}"?`,
+      header: 'Confirmar eliminación',
       icon: 'pi pi-exclamation-triangle',
-      acceptLabel: 'Si, eliminar',
+      acceptLabel: 'Sí, eliminar',
       rejectLabel: 'Cancelar',
       acceptClassName: 'p-button-danger',
       accept: () => {
         try {
           const nextCedulas = cedulas.filter((c) => c.id !== cedula.id);
           persistCedulas(nextCedulas);
-          success('Cedula eliminada exitosamente');
+          success('Cédula eliminada exitosamente');
         } catch (err) {
           error(formatApiError(err));
         }

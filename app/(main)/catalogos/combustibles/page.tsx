@@ -1,15 +1,17 @@
 'use client';
 
-import CatalogoBasePage from '@/src/components/CatalogoBasePage';
+import PreciosPrototypeForm from '@/src/components/catalogos/PreciosPrototypeForm';
+import { usePermissions } from '@/src/hooks/usePermissions';
+import { AccessDenied } from '@/src/components/AccessDeneid';
 
 const CombustiblesPage = () => {
-  return (
-    <CatalogoBasePage
-      catalogoKey="combustibles"
-      title="Combustibles"
-      description="Gestión de precios de combustibles por región"
-    />
-  );
+    const { hasAnyPermission } = usePermissions();
+
+    if (!hasAnyPermission(['catalogos.tabuladores.combustibles'])) {
+        return <AccessDenied message="No tienes permisos para acceder a este catálogo." variant="detailed" />;
+    }
+
+    return <PreciosPrototypeForm mode="combustibles" />;
 };
 
 export default CombustiblesPage;

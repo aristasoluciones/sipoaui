@@ -47,3 +47,4 @@ setup-vscode.sh
 sipoa.code-workspace
 docs_copilot
 .github/prompts
+exclude/

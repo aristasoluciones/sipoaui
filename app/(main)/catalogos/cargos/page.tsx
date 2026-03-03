@@ -179,10 +179,6 @@ const CedulaCargosPage = () => {
     };
 
     useEffect(() => {
-        // Verificar si ya se hizo el seeding inicial
-        if (typeof window !== 'undefined') {
-            window.localStorage.getItem(SEEDED_KEY);
-        }
         loadData();
     }, []);
 
@@ -214,7 +210,13 @@ const CedulaCargosPage = () => {
                 }
             }
 
-            // Si no hay datos válidos, restaurar automáticamente una cédula demo.
+            // Evitar re-seeding si el usuario ya borró los datos iniciales
+            if (localStorage.getItem(SEEDED_KEY) === '1') {
+                setCedulas([]);
+                return;
+            }
+
+            // Si no hay datos válidos y nunca se ha hecho el seeding, crear una cédula demo.
             const demo = getCedulaDemoFromExcel();
             const adscripcion = unidadesData.find((u: any) =>
                 String(u.nombre || '')

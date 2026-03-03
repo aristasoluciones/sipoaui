@@ -227,7 +227,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         const headers = isCombustiblesView ? ['Nombre', 'Subtipo', 'Unidad', 'Precio (MXN)', 'Última actualización'] : ['Nombre', 'Categoría', 'Unidad', 'Precio (MXN)', 'Última actualización'];
         const rows = filteredItems.map((item) => [item.nombre, isCombustiblesView ? item.subtipoCombustible || '' : getCategoriaNombre(item.categoriaPrecioId), item.unidadMedida, item.precio?.toString() ?? '', formatFecha(item.updatedAt)]);
         const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.href = url;

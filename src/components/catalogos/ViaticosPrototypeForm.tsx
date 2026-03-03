@@ -229,7 +229,7 @@ export default function ViaticosPrototypeForm() {
         const headers = ['Categoría', 'Zona', 'Cuota (MXN)', 'Última actualización'];
         const rows = filteredItems.map((item) => [item.categoria, getZonaNombre(item.zona_id), item.cuota?.toString() ?? '', new Date(item.updated_at).toLocaleString('es-MX')]);
         const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.href = url;

@@ -15,6 +15,7 @@ import { BreadCrumb } from 'primereact/breadcrumb';
 import { useNotification } from '@/layout/context/notificationContext';
 import { PreciosService } from '@/src/services/precios.service';
 import { CategoriaPreciosService } from '@/src/services/categoriaPrecios.service';
+import { CombustiblesService } from '@/src/services/combustibles.service';
 import type { Precio, CategoriaPrecio } from '@/types/catalogos';
 
 // ─── Tipos locales ─────────────────────────────────────────────────────────────
@@ -42,11 +43,11 @@ const SUBTIPO_COMBUSTIBLE_OPTIONS = [
     { label: 'Diésel', value: 'Diesel' }
 ];
 
-const makeInitialForm = (): FormValues => ({
+const makeInitialForm = (mode?: 'master' | 'combustibles'): FormValues => ({
     id: null,
     categoriaPrecioId: null,
     nombre: '',
-    unidadMedida: '',
+    unidadMedida: mode === 'combustibles' ? 'Litro' : '',
     subtipoCombustible: '',
     precio: null
 });
@@ -68,7 +69,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
     const [items, setItems] = useState<Precio[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const [form, setForm] = useState<FormValues>(makeInitialForm);
+    const [form, setForm] = useState<FormValues>(() => makeInitialForm(mode));
     const [showDialog, setShowDialog] = useState(false);
 
     const [showAddCategoria, setShowAddCategoria] = useState(false);
@@ -106,6 +107,10 @@ export default function PreciosPrototypeForm({ mode }: Props) {
             setLoading(false);
         }
     }, [error]);
+
+    useEffect(() => {
+        setForm(makeInitialForm(mode));
+    }, [mode]);
 
     useEffect(() => {
         loadData();
@@ -236,10 +241,10 @@ export default function PreciosPrototypeForm({ mode }: Props) {
 
     const closeDialog = useCallback(() => {
         setShowDialog(false);
-        setForm(makeInitialForm());
+        setForm(makeInitialForm(mode));
         setShowAddCategoria(false);
         setNuevaCategoria('');
-    }, []);
+    }, [mode]);
 
     const validate = useCallback((): string | null => {
         if (!form.nombre.trim()) return 'El nombre es obligatorio';
@@ -266,26 +271,46 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         try {
             if (form.id) {
                 // Actualizar
-                const updated = await PreciosService.update(form.id, {
-                    categoriaPrecioId: catId,
-                    nombre: form.nombre.trim(),
-                    unidadMedida: form.unidadMedida.trim(),
-                    precio: form.precio!,
-                    subtipoCombustible: isCombustiblesView ? form.subtipoCombustible : null
-                });
+                let updated;
+                if (isCombustiblesView) {
+                    updated = await CombustiblesService.update(form.id, {
+                        nombre: form.nombre.trim(),
+                        unidadMedida: form.unidadMedida.trim(),
+                        precio: form.precio!,
+                        subtipoCombustible: form.subtipoCombustible!
+                    });
+                } else {
+                    updated = await PreciosService.update(form.id, {
+                        categoriaPrecioId: catId,
+                        nombre: form.nombre.trim(),
+                        unidadMedida: form.unidadMedida.trim(),
+                        precio: form.precio!,
+                        subtipoCombustible: null
+                    });
+                }
                 setItems((prev) => prev.map((i) => (i.id === form.id ? updated : i)));
-                success('Precio actualizado');
+                success('Registro actualizado');
             } else {
                 // Crear
-                const nuevo = await PreciosService.create({
-                    categoriaPrecioId: catId,
-                    nombre: form.nombre.trim(),
-                    unidadMedida: form.unidadMedida.trim(),
-                    precio: form.precio!,
-                    subtipoCombustible: isCombustiblesView ? form.subtipoCombustible : null
-                });
+                let nuevo;
+                if (isCombustiblesView) {
+                    nuevo = await CombustiblesService.create({
+                        nombre: form.nombre.trim(),
+                        unidadMedida: form.unidadMedida.trim(),
+                        precio: form.precio!,
+                        subtipoCombustible: form.subtipoCombustible!
+                    });
+                } else {
+                    nuevo = await PreciosService.create({
+                        categoriaPrecioId: catId,
+                        nombre: form.nombre.trim(),
+                        unidadMedida: form.unidadMedida.trim(),
+                        precio: form.precio!,
+                        subtipoCombustible: null
+                    });
+                }
                 setItems((prev) => [nuevo, ...prev]);
-                success('Precio creado');
+                success('Registro creado');
             }
             closeDialog();
         } catch (e: any) {
@@ -338,13 +363,13 @@ export default function PreciosPrototypeForm({ mode }: Props) {
 
     const openNew = useCallback(() => {
         setForm({
-            ...makeInitialForm(),
+            ...makeInitialForm(mode),
             categoriaPrecioId: isCombustiblesView ? categoriaCombustibleId : null
         });
         setShowAddCategoria(false);
         setNuevaCategoria('');
         setShowDialog(true);
-    }, [isCombustiblesView, categoriaCombustibleId]);
+    }, [mode, isCombustiblesView, categoriaCombustibleId]);
 
     // ─── Templates de columnas ─────────────────────────────────────────────────
 

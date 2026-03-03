@@ -271,7 +271,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         try {
             if (form.id) {
                 // Actualizar
-                let updated;
+                let updated: Precio;
                 if (isCombustiblesView) {
                     updated = await CombustiblesService.update(form.id, {
                         nombre: form.nombre.trim(),
@@ -292,7 +292,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                 success('Registro actualizado');
             } else {
                 // Crear
-                let nuevo;
+                let nuevo: Precio;
                 if (isCombustiblesView) {
                     nuevo = await CombustiblesService.create({
                         nombre: form.nombre.trim(),

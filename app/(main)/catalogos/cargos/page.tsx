@@ -355,14 +355,6 @@ const CedulaCargosPage = () => {
         }
     };
 
-    const updateFuncion = (index: number, field: 'titulo' | 'descripcion', value: string) => {
-        if (editingCedula) {
-            const newFunciones = [...editingCedula.funciones];
-            newFunciones[index][field] = value;
-            setEditingCedula({ ...editingCedula, funciones: newFunciones });
-        }
-    };
-
     const addCompetencia = () => {
         if (editingCedula) {
             setEditingCedula({
@@ -376,6 +368,14 @@ const CedulaCargosPage = () => {
         if (editingCedula) {
             const newCompetencias = editingCedula.competencias.filter((_, i) => i !== index);
             setEditingCedula({ ...editingCedula, competencias: newCompetencias });
+        }
+    };
+
+    const updateFuncion = (index: number, field: keyof Funcion, value: string) => {
+        if (editingCedula) {
+            const newFunciones = [...editingCedula.funciones];
+            (newFunciones[index] as any)[field] = value;
+            setEditingCedula({ ...editingCedula, funciones: newFunciones });
         }
     };
 

@@ -16,6 +16,7 @@ import { useNotification } from '@/layout/context/notificationContext';
 import { PreciosService } from '@/src/services/precios.service';
 import { CategoriaPreciosService } from '@/src/services/categoriaPrecios.service';
 import { CombustiblesService } from '@/src/services/combustibles.service';
+import ImportCatalogDialog from './ImportCatalogDialog';
 import type { Precio, CategoriaPrecio } from '@/types/catalogos';
 
 // ─── Tipos locales ─────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
     const [editingCategoriaNombre, setEditingCategoriaNombre] = useState('');
     const [saving, setSaving] = useState(false);
     const [filterCategoria, setFilterCategoria] = useState<number | null>(null);
+    const [showImportDialog, setShowImportDialog] = useState(false);
 
     const isCombustiblesView = mode === 'combustibles';
 
@@ -424,7 +426,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                             )}
                         </div>
                         <div className="flex gap-2">
-                            <Button label="Importar" icon="pi pi-upload" severity="secondary" tooltip="Importar desde archivo (disponible en la próxima fase)" tooltipOptions={{ position: 'top' }} disabled />
+                            <Button label="Importar" icon="pi pi-upload" severity="secondary" tooltip="Importar desde archivo" tooltipOptions={{ position: 'top' }} onClick={() => setShowImportDialog(true)} />
                             <Button label="Exportar" icon="pi pi-download" severity="help" tooltip="Exportar a CSV" tooltipOptions={{ position: 'top' }} onClick={handleExportCSV} />
                             <Button icon="pi pi-refresh" severity="secondary" onClick={loadData} tooltip="Actualizar" tooltipOptions={{ position: 'top' }} loading={loading} />
                         </div>
@@ -631,6 +633,16 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                         </div>
                     </form>
                 </Dialog>
+
+                {/* ── Dialog: Importación Compartida ── */}
+                <ImportCatalogDialog
+                    visible={showImportDialog}
+                    onHide={() => setShowImportDialog(false)}
+                    onRefresh={loadData}
+                    catalogKey={isCombustiblesView ? 'combustibles' : 'precios'}
+                    catalogTitle={`Importar ${isCombustiblesView ? 'Combustibles' : 'Precios'}`}
+                    description={`Selecciona un archivo CSV o Excel para actualizar masivamente el catálogo de ${isCombustiblesView ? 'combustibles' : 'precios y tarifas'}.`}
+                />
             </div>
         </div>
     );

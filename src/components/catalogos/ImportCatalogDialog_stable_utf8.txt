@@ -53,17 +53,7 @@ const normalizeText = (t: string) =>
     t
         .toLowerCase()
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^\w\s]/gi, '')
-        .trim();
-
-const strictNormalize = (t: string) =>
-    t
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]/gi, '') // Elimina TODO excepto letras y números (incluyendo espacios internos)
-        .trim();
+        .replace(/[\u0300-\u036f]/g, '');
 
 const CATALOG_REQUIREMENTS: Record<string, string[]> = {
     unidades: ['codigo', 'nombre', 'estatus'],
@@ -76,8 +66,8 @@ const CATALOG_REQUIREMENTS: Record<string, string[]> = {
     beneficiarios: ['nombre', 'estatus'],
     viaticos: ['nivel', 'categoria'],
     municipios: ['nombre'], // clasificacion_zona se detecta din├ímicamente
-    precios: ['concepto'], // Se relaja la validación frontal para permitir importación
-    combustibles: ['concepto', 'unidad', 'subtipo_combustible']
+    precios: ['nombre', 'unidad_medida', 'precio'],
+    combustibles: ['nombre', 'unidad_medida', 'precio', 'subtipo_combustible']
 };
 
 const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHide, onRefresh, catalogKey, catalogTitle, description = 'Selecciona un archivo CSV, XLS o XLSX para importar datos a este cat├ílogo.' }) => {
@@ -101,18 +91,7 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
     const [viaticoFields, setViaticoFields] = useState<string[]>([]); // Nombres t├®cnicos de campos
     const [viaticoRows, setViaticoRows] = useState<ImportPreviewRow[]>([]);
 
-    // Estados para Multi-hoja (Precios/Combustibles)
-    const [sheetPreviews, setSheetPreviews] = useState<
-        {
-            name: string;
-            headers: string[];
-            fields: string[];
-            rows: ImportPreviewRow[];
-        }[]
-    >([]);
-    const [activeSheetIdx, setActiveSheetIdx] = useState(0);
-
-    const [activeTab, setActiveTab] = useState<'municipios' | 'viaticos' | 'precios'>('viaticos');
+    const [activeTab, setActiveTab] = useState<'municipios' | 'viaticos'>('viaticos');
     const [structureError, setStructureError] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -128,8 +107,6 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
         setViaticoHeaders([]);
         setViaticoFields([]);
         setViaticoRows([]);
-        setSheetPreviews([]);
-        setActiveSheetIdx(0);
         setImportResult(null);
         setImporting(false);
         setStructureError(null);
@@ -171,176 +148,34 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
     const loadPreviewFromFile = async (file: File) => {
         const extension = file.name.split('.').pop()?.toLowerCase();
         let rows: string[][] = [];
-        let allSheetsData: any[] = [];
 
         try {
+            let technicalMerges: any[] = [];
             if (extension === 'xlsx' || extension === 'xls') {
                 const XLSX = await import('xlsx');
                 const buffer = await file.arrayBuffer();
                 const workbook = XLSX.read(buffer, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const firstSheet = workbook.Sheets[firstSheetName];
 
-                for (const sheetName of workbook.SheetNames) {
-                    if (sheetName.toLowerCase().includes('instrucciones')) continue;
+                // IMPORTANTE: Recuperar unificaciones (merges) para que no se pierdan datos en celdas unificadas
+                technicalMerges = firstSheet['!merges'] || [];
+                rows = (XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' }) as any[][]).map((row) => row.map((cell) => String(cell ?? '').trim()));
 
-                    const sheet = workbook.Sheets[sheetName];
-                    const technicalMerges = sheet['!merges'] || [];
-                    const sheetRows = (XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][]).map((row) => row.map((cell) => String(cell ?? '').trim()));
-
-                    // Aplicar l├│gica de unificaci├│n (merges) b├ísica para previsualizaci├│n
-                    technicalMerges.forEach((merge) => {
-                        const firstVal = sheetRows[merge.s.r]?.[merge.s.c] || '';
-                        if (firstVal !== '') {
-                            for (let r = merge.s.r; r <= merge.e.r; r++) {
-                                for (let c = merge.s.c; c <= merge.e.c; c++) {
-                                    if (r === merge.s.r && c === merge.s.c) continue;
-                                    if (sheetRows[r] && sheetRows[r][c] === '') {
-                                        sheetRows[r][c] = firstVal;
-                                    }
+                // Aplicar l├│gica de unificaci├│n (merges) b├ísica para previsualizaci├│n
+                technicalMerges.forEach((merge) => {
+                    const firstVal = rows[merge.s.r]?.[merge.s.c] || '';
+                    if (firstVal !== '') {
+                        for (let r = merge.s.r; r <= merge.e.r; r++) {
+                            for (let c = merge.s.c; c <= merge.e.c; c++) {
+                                if (r === merge.s.r && c === merge.s.c) continue;
+                                if (rows[r] && rows[r][c] === '') {
+                                    rows[r][c] = firstVal;
                                 }
                             }
                         }
-                    });
-
-                    if (sheetRows.length === 0) continue;
-
-                    // 1. Identificar el nombre de la categoría buscando el patrón "COSTOS [NOMBRE]" en las primeras 6 filas
-                    let categoryTitle = sheetName;
-                    let categoryTitleRowIdx = -1;
-                    for (let ri = 0; ri < Math.min(sheetRows.length, 6); ri++) {
-                        for (const cell of sheetRows[ri]) {
-                            const m = cell.match(/^costos?\s+(.+)/i);
-                            if (m) {
-                                // Limpiar "IEPC", años y espacios extras, y corregir encoding ( -> Í)
-                                let cleaned = m[1]
-                                    .replace(/\uFFFD/g, 'Í')
-                                    .replace(/\bIEPC\b/gi, '')
-                                    .replace(/\b20\d{2}\b/g, '')
-                                    .trim()
-                                    .replace(/\s+/g, ' ');
-                                if (cleaned.length > 2) {
-                                    categoryTitle = cleaned;
-                                    categoryTitleRowIdx = ri;
-                                    break;
-                                }
-                            }
-                        }
-                        if (categoryTitleRowIdx !== -1) break;
                     }
-
-                    // 2. Buscar la MEJOR fila de encabezado (scoring system)
-                    const headerKeywords = ['concepto', 'unidad', 'costo', 'total', 'precio', 'medida', 'contenido', 'partida', 'iva'];
-                    const skipHeaderKeywords = ['instituto', 'electoral', 'participacion', 'ciudadana', 'chiapas'];
-                    let bestHeaderIdx = -1;
-                    let maxScore = -1;
-
-                    // Escanear las primeras 20 filas buscando el header
-                    for (let i = 0; i < Math.min(sheetRows.length, 20); i++) {
-                        const row = sheetRows[i];
-                        let score = 0;
-
-                        row.forEach((cell) => {
-                            const normalizedCell = strictNormalize(cell);
-                            const cleanCell = normalizedCell.replace(/[^a-z0-9]/g, ''); // C O N C E P T O -> concepto
-                            if (headerKeywords.some((kw) => normalizedCell.includes(kw) || cleanCell.includes(kw))) {
-                                score += 50; // Extra peso a keywords de cabecera reales
-                            }
-                            if (skipHeaderKeywords.some((kw) => normalizedCell.includes(kw) || cleanCell.includes(kw))) {
-                                score -= 30; // Penalizar textos institucionales
-                            }
-                            if (cell !== '') score += 1; // Puntos por celdas no vacías
-                        });
-
-                        // Penalizar la fila del título de categoría para que no se confunda con el header
-                        if (i === categoryTitleRowIdx) score -= 100;
-
-                        // Solo considerar headers con al menos una palabra clave real (relajar de 40 a 20 por si hay pocos headers)
-                        if (score > maxScore && score >= 20) {
-                            maxScore = score;
-                            bestHeaderIdx = i;
-                        }
-                    }
-
-                    if (bestHeaderIdx === -1) bestHeaderIdx = categoryTitleRowIdx !== -1 ? categoryTitleRowIdx + 1 : 0;
-
-                    const hRow = sheetRows[bestHeaderIdx];
-                    const vIdxs = hRow.map((c, i) => (c !== '' ? i : -1)).filter((i) => i !== -1);
-                    const headers = vIdxs.map((i) => hRow[i]);
-                    const fields = vIdxs.map((i) => {
-                        const n = strictNormalize(hRow[i]);
-                        if (n.includes('codigo')) return 'codigo';
-                        // PRIORIDAD: Concepto estrictamente (no atrapar columnas de costo)
-                        if (n === 'concepto' || n === 'descripcion' || n === 'nombre') return 'concepto';
-                        // Unidad de medida (viene antes que costo_pieza para no confundirse)
-                        if (n === 'unidad' || n.includes('unidadmedida') || n.includes('medida')) return 'unidad';
-                        // Costo por pieza (tiene prioridad sobre costo_total)
-                        if (n.includes('pieza') && n.includes('costo')) return 'costo_pieza';
-                        // Inflación
-                        if (n.includes('inflacion') || n.includes('estimada')) return 'inflacion';
-                        // Total 2026 / Total 2025 / Costo Total -> costo_total
-                        if (n.includes('costototal') || /total202[56]/.test(n) || n === 'total2026' || n === 'total2025') return 'costo_total';
-                        // COSTO (sin pieza), precio -> costo_base
-                        if (n === 'costo' || n === 'precio' || n === 'preciounitario') return 'costo_base';
-                        // IVA
-                        if (n.startsWith('iva')) return 'iva';
-                        // Total genérico -> costo_total
-                        if (n === 'total' || n.includes('total')) return 'costo_total';
-                        if (n.includes('estatus') || n.includes('estado')) return 'estatus';
-                        if (n.includes('subtipo')) return 'subtipo_combustible';
-                        if (n.includes('contenido')) return 'contenido';
-                        return '';
-                    });
-
-                    const conceptoFieldIdx = fields.indexOf('concepto');
-                    const unidadFieldIdx = fields.indexOf('unidad');
-                    const hasCostField = fields.some((f) => f === 'costo_total' || f === 'costo_pieza' || f === 'costo_base');
-
-                    const sheetPreviewRows = sheetRows
-                        .slice(bestHeaderIdx + 1, bestHeaderIdx + 101)
-                        .map((row, idx) => ({
-                            rowNumber: idx + 1,
-                            fileRowNumber: bestHeaderIdx + idx + 2,
-                            values: vIdxs.map((i) => String(row[i] || '').trim())
-                        }))
-                        .filter((r: ImportPreviewRow) => {
-                            if (!r.values.some((v: string) => v !== '')) return false; // fila vacía
-
-                            // Para catálogo precios: ignorar filas sin concepto o sin ningún costo
-                            if (catalogKey === 'precios') {
-                                const conceptoVal = conceptoFieldIdx !== -1 ? r.values[conceptoFieldIdx] ?? '' : '';
-                                const unidadVal = unidadFieldIdx !== -1 ? r.values[unidadFieldIdx] ?? '' : '';
-
-                                // Ignorar si parece sub-encabezado (5 dígitos como código de partida)
-                                if (conceptoVal !== '' && /^\d{5}$/.test(conceptoVal)) return false;
-
-                                // Filtrar fila basura como "O R I G I N A L" que a veces cae en Unidad o Concepto
-                                const combinedText = strictNormalize(conceptoVal + unidadVal).replace(/\s/g, '');
-                                if (combinedText === 'original') return false;
-
-                                // Exigir que al menos tenga ALGO de texto en concepto (si la columna existe)
-                                if (conceptoFieldIdx !== -1 && (conceptoVal === '' || conceptoVal === '-')) return false;
-                            }
-                            return true;
-                        });
-
-                    allSheetsData.push({
-                        name: categoryTitle.length > 20 ? categoryTitle.substring(0, 17) + '...' : categoryTitle,
-                        fullName: categoryTitle,
-                        headers,
-                        fields,
-                        rows: sheetPreviewRows
-                    });
-                }
-
-                setSheetPreviews(allSheetsData);
-                if (allSheetsData.length > 0) {
-                    setPreviewHeaders(allSheetsData[0].headers);
-                    setPreviewRows(allSheetsData[0].rows);
-                    setActiveTab('precios'); // Set active tab to 'precios' for multi-sheet files
-                }
-
-                // Use the first sheet's rows for general detection if needed, or combine all
-                // For now, we'll use the first sheet's rows for the general detection logic below
-                rows = allSheetsData[0]?.rows.map((r: ImportPreviewRow) => r.values) || [];
+                });
             } else {
                 const content = await file.text();
                 rows = content
@@ -350,8 +185,7 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                     .map((line) => parseCsvRow(line));
             }
 
-            if (!rows.length && sheetPreviews.length === 0) {
-                // Also check sheetPreviews for Excel files
+            if (!rows.length) {
                 setPreviewHeaders([]);
                 setPreviewRows([]);
                 setAllPreviewRows([]);
@@ -565,8 +399,7 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
             }
 
             // Procesar Gen├®rico (Fallback si no es especial o si es otro cat├ílogo)
-            // This block should only run if no specific detection (muni/viatico/multi-sheet) has occurred
-            if (sheetPreviews.length === 0 && finalMuniHeaders.length === 0 && finalViaticoHeaders.length === 0) {
+            if (activeTab === 'viaticos' && finalMuniHeaders.length === 0 && finalViaticoHeaders.length === 0) {
                 const firstDataIdx = rows.findIndex((r) => r.some((c) => c !== ''));
                 if (firstDataIdx !== -1) {
                     const hRow = rows[firstDataIdx];
@@ -580,30 +413,25 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                         if (n.includes('descripcion')) return 'descripcion';
                         return '';
                     });
-                    const genRows = rows
-                        .slice(firstDataIdx + 1)
-                        .map((row, idx) => ({
-                            rowNumber: idx + 1,
-                            fileRowNumber: firstDataIdx + idx + 2,
-                            values: vIdxs.map((i) => String(row[i] || '').trim())
-                        }))
-                        .filter((r: ImportPreviewRow) => r.values.some((v: string) => v !== ''));
+                    const genRows = rows.slice(firstDataIdx + 1).map((row, idx) => ({
+                        rowNumber: idx + 1,
+                        fileRowNumber: firstDataIdx + idx + 2,
+                        values: vIdxs.map((i) => String(row[i] || '').trim())
+                    }));
+
                     setViaticoHeaders(genHeaders);
                     setViaticoFields(genFields);
-                    setViaticoRows(genRows);
-                    setActiveTab('viaticos'); // Default to viaticos tab for generic CSV/single-sheet Excel
+                    setViaticoRows(genRows.filter((r) => r.values.some((v) => v !== '')));
                 }
             }
 
             // Determinar inicial
-            if (allSheetsData.length > 0) {
-                setActiveTab('precios');
-            } else if (catalogKey === 'municipios' && muniMatches > 0) {
+            if (catalogKey === 'municipios' && muniMatches > 0) {
                 setActiveTab('municipios');
             } else if (viaticoMatches > 0) {
                 setActiveTab('viaticos');
             } else {
-                setActiveTab('viaticos'); // Fallback for generic CSV or non-specialized Excel
+                setActiveTab('viaticos');
             }
 
             // Validaci├│n Estricta de Seguridad (Evitar archivos cruzados)
@@ -617,32 +445,23 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
             const prohibited = catProhibitedKeywords[catalogKey] || [];
             const foundProhibited = prohibited.filter((kw) => {
                 const nKw = normalizeText(kw);
-                // Check all sheets if available, otherwise check main rows
-                const allContentRows = allSheetsData.length > 0 ? allSheetsData.flatMap((s: any) => s.rows.map((r: any) => r.values)) : rows;
-                return allContentRows.slice(0, 10).some((row: any) => row.some((cell: any) => normalizeText(String(cell || '')).includes(nKw)));
+                return rows.slice(0, 10).some((row) => row.some((cell) => normalizeText(String(cell || '')).includes(nKw)));
             });
 
             if (foundProhibited.length > 0 && catalogKey !== 'municipios') {
+                // Sugerir qu├® cat├ílogo podr├¡a ser
                 let suggestion = '';
                 if (foundProhibited.includes('codigo')) suggestion = 'Unidades Responsables o Precios';
-                setStructureError(`⚠️ Este archivo no parece ser de "${catalogTitle}". Se detectaron columnas de "${suggestion || 'otro catálogo'}". Por favor, verifica el archivo.`);
+                setStructureError(`ÔÜá´©Å Este archivo no parece ser de "${catalogTitle}". Se detectaron columnas de "${suggestion || 'otro cat├ílogo'}". Por favor, verifica el archivo.`);
             } else {
-                // Validación de campos requeridos: USAMOS allSheetsData (no sheetPreviews que aún es el estado anterior)
+                // Validaci├│n de campos requeridos (Sincronizado con Back)
                 const required = CATALOG_REQUIREMENTS[catalogKey] || [];
                 const missing = required.filter((req) => {
-                    const nReq = strictNormalize(req);
-
-                    // Para Excel multihoja usamos allSheetsData directamente (no el state stale sheetPreviews)
-                    if (allSheetsData.length > 0) {
-                        // Basta con que al MENOS UNA hoja detecte el campo requerido
-                        return !allSheetsData.some((s: any) => s.fields.some((f: string) => strictNormalize(f) === nReq));
-                    }
-
-                    // Fallback para CSV
-                    const allContentRows = rows;
-                    return !allContentRows.slice(0, 15).some((row) =>
+                    const nReq = normalizeText(req);
+                    return !rows.slice(0, 10).some((row) =>
                         row.some((cell) => {
-                            const cellVal = strictNormalize(String(cell || ''));
+                            const cellVal = normalizeText(String(cell || ''));
+                            // Empat├¡a con variaciones comunes
                             if (nReq === 'estatus' && cellVal === 'estado') return true;
                             if (nReq === 'codigo' && cellVal === 'clave') return true;
                             return cellVal === nReq;
@@ -651,14 +470,13 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                 });
 
                 if (missing.length > 0 && catalogKey !== 'municipios') {
-                    setStructureError(`⚠️ Al archivo le faltan columnas obligatorias: [${missing.join(', ')}]. Por favor verifica el formato.`);
+                    setStructureError(`ÔÜá´©Å Al archivo le faltan columnas obligatorias: [${missing.join(', ')}]. Por favor verifica el formato.`);
                 } else {
                     setStructureError(null);
                 }
             }
         } catch (error) {
             console.error('Error parsing file preview:', error);
-            showMsgError('No se pudo generar la vista previa. Asegúrate de que el archivo no esté corrupto o protegido.');
             throw error;
         }
     };
@@ -681,12 +499,10 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                 if (typeof item === 'string') return { row: extractRow(item), message: item };
                 const message = item?.message ?? item?.error ?? JSON.stringify(item);
                 const r = item?.row ?? item?.fila ?? item?.line ?? item?.linea;
-                const sheet = item?.sheet ?? item?.hoja;
                 return {
                     row: Number.isFinite(Number(r)) ? Number(r) : extractRow(String(message)),
                     field: item?.field ?? item?.campo,
-                    message,
-                    sheet
+                    message
                 };
             });
         }
@@ -704,11 +520,6 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
         const formData = new FormData();
         formData.append('archivo', importFile);
         formData.append('catalogo', catalogKey);
-        // If multi-sheet, send the active sheet name
-        if (activeTab === 'precios' && sheetPreviews.length > 0) {
-            formData.append('sheet_name', sheetPreviews[activeSheetIdx].name);
-        }
-
         try {
             setImporting(true);
             const response = await http.post('/api/catalogos/importar', formData, {
@@ -731,17 +542,6 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                     const errorRowNumbers = new Set(result.errors.map((e) => Number(e.row)));
                     setMuniRows((prev) => prev.filter((r) => errorRowNumbers.has(r.fileRowNumber)));
                     setViaticoRows((prev) => prev.filter((r) => errorRowNumbers.has(r.fileRowNumber)));
-                    setSheetPreviews((prevSheets) =>
-                        prevSheets.map((sheet, idx) => {
-                            if (idx === activeSheetIdx) {
-                                return {
-                                    ...sheet,
-                                    rows: sheet.rows.filter((r) => errorRowNumbers.has(r.fileRowNumber))
-                                };
-                            }
-                            return sheet;
-                        })
-                    );
                 }
 
                 showMsgError(`Importaci├│n con errores. ├ëxitos: ${result.totalCreated + result.totalUpdated}, Errores: ${result.totalErrors}`);
@@ -761,17 +561,6 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                 const errorRowNumbers = new Set(result.errors.map((e) => Number(e.row)));
                 setMuniRows((prev) => prev.filter((r) => errorRowNumbers.has(r.fileRowNumber)));
                 setViaticoRows((prev) => prev.filter((r) => errorRowNumbers.has(r.fileRowNumber)));
-                setSheetPreviews((prevSheets) =>
-                    prevSheets.map((sheet, idx) => {
-                        if (idx === activeSheetIdx) {
-                            return {
-                                ...sheet,
-                                rows: sheet.rows.filter((r) => errorRowNumbers.has(r.fileRowNumber))
-                            };
-                        }
-                        return sheet;
-                    })
-                );
             }
 
             showMsgError(formatApiError(error) || 'Error en la importaci├│n');
@@ -792,7 +581,7 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
         try {
             await loadPreviewFromFile(file);
         } catch (error) {
-            // Error message already shown in loadPreviewFromFile
+            showMsgError('No se pudo generar la vista previa');
         }
     };
 
@@ -809,7 +598,6 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                 const sheet = String(e.sheet || '').toLowerCase();
                 if (activeTab === 'viaticos') return sheet.includes('viatico') || !sheet;
                 if (activeTab === 'municipios') return sheet.includes('muni');
-                if (activeTab === 'precios') return sheet === normalizeText(sheetPreviews[activeSheetIdx]?.name || '');
                 return true;
             })
             .map((e) => Number(e.row))
@@ -818,7 +606,6 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
     const hasPreviewErrors =
         (activeTab === 'viaticos' && viaticoRows.some((r) => r.values.some((v) => v === '-' || v === ''))) ||
         (activeTab === 'municipios' && muniRows.some((r) => r.values.some((v) => v === '-' || v === ''))) ||
-        (activeTab === 'precios' && sheetPreviews[activeSheetIdx]?.rows.some((r) => r.values.some((v) => v === '-' || v === ''))) ||
         (importResult && importResult.totalErrors > 0);
 
     return (
@@ -845,16 +632,23 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                     <small className="text-700 font-medium">{importFile ? importFile.name : 'No hay archivo seleccionado'}</small>
                 </div>
 
-                {(muniRows.length > 0 || viaticoRows.length > 0 || sheetPreviews.length > 0) && (
+                {structureError && (
+                    <div className="bg-red-50 border-left-3 border-red-500 p-3 flex align-items-center gap-3 border-round">
+                        <i className="pi pi-exclamation-triangle text-red-600 text-xl"></i>
+                        <span className="text-red-800 font-medium">{structureError}</span>
+                    </div>
+                )}
+
+                {(muniRows.length > 0 || viaticoRows.length > 0) && (
                     <div className="flex flex-column gap-2 mt-2">
-                        {/* Selector de pesta├▒as para municipios */}
-                        {catalogKey === 'municipios' && (muniRows.length > 0 || viaticoRows.length > 0) && (
-                            <div className="flex gap-2 p-1 bg-gray-100 border-round-lg w-fit mb-3">
+                        {/* Solo mostrar selector de pesta├▒as si hay datos en ambas o si es el cat├ílogo de municipios */}
+                        {muniRows.length > 0 && viaticoRows.length > 0 && (
+                            <div className="flex gap-1 bg-gray-100 p-1 border-round-lg w-fit">
                                 <button
                                     onClick={() => setActiveTab('viaticos')}
                                     className={`px-3 py-1 border-none border-round-md cursor-pointer font-medium transition-all text-sm ${activeTab === 'viaticos' ? 'bg-white text-blue-700 shadow-1' : 'bg-transparent text-600 hover:bg-gray-200'}`}
                                 >
-                                    Vi├íticos
+                                    {catalogKey === 'municipios' ? 'Vi├íticos' : catalogTitle}
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('municipios')}
@@ -865,40 +659,12 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                             </div>
                         )}
 
-                        {/* Selector de pesta├▒as para Precios/Combustibles (Excel multi-hoja) */}
-                        {sheetPreviews.length > 1 && (
-                            <div className="flex flex-wrap gap-2 p-1 bg-gray-100 border-round-lg w-full mb-3 overflow-x-auto">
-                                {sheetPreviews.map((sheet, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => {
-                                            setActiveSheetIdx(idx);
-                                            setActiveTab('precios');
-                                        }}
-                                        className={`px-3 py-1 border-none border-round-md cursor-pointer font-medium transition-all text-sm white-space-nowrap ${
-                                            activeSheetIdx === idx ? 'bg-white text-blue-700 shadow-1' : 'bg-transparent text-600 hover:bg-gray-200'
-                                        }`}
-                                    >
-                                        {sheet.name}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-
-                        {structureError && (
-                            <div className="bg-red-50 border-left-3 border-red-500 p-3 flex align-items-center gap-3 border-round mb-3">
-                                <i className="pi pi-exclamation-triangle text-red-600 text-xl"></i>
-                                <span className="text-red-800 font-medium">{structureError}</span>
-                            </div>
-                        )}
-
                         <div className="border-1 surface-border border-round-xl p-0 overflow-hidden">
                             <div className="flex align-items-center justify-content-between px-3 py-2 bg-blue-50 border-bottom-1 surface-border">
                                 <div className="flex align-items-center gap-2">
                                     <i className="pi pi-table text-blue-600"></i>
                                     <span className="font-semibold text-900">
-                                        {activeTab === 'viaticos' ? (catalogKey === 'municipios' ? 'Vi├íticos' : catalogTitle) : activeTab === 'precios' ? sheetPreviews[activeSheetIdx]?.name : 'Municipios (Zonas)'} -{' '}
-                                        {importFile?.name || 'Vista Previa'}
+                                        {activeTab === 'viaticos' ? (catalogKey === 'municipios' ? 'Vi├íticos' : catalogTitle) : 'Municipios (Zonas)'} - {importFile?.name || 'Vista Previa'}
                                     </span>
                                 </div>
                             </div>
@@ -907,7 +673,7 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                                     <thead className="sticky top-0 z-1 shadow-1">
                                         <tr className={isHeaderError ? 'bg-red-100 text-red-700' : 'bg-gray-50'}>
                                             <th className={`text-left p-2 border-bottom-1 surface-border w-4rem ${isHeaderError ? 'text-red-700' : 'text-700'}`}>Fila</th>
-                                            {(activeTab === 'viaticos' ? viaticoHeaders : activeTab === 'precios' ? sheetPreviews[activeSheetIdx]?.headers : muniHeaders).map((h, i) => (
+                                            {(activeTab === 'viaticos' ? viaticoHeaders : muniHeaders).map((h, i) => (
                                                 <th key={i} className={`text-left p-2 border-bottom-1 surface-border min-w-8rem ${isHeaderError ? 'text-red-700' : 'text-700'}`}>
                                                     <div className="overflow-hidden text-overflow-ellipsis" title={h}>
                                                         {h || `Col ${i + 1}`}
@@ -917,10 +683,10 @@ const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHi
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(activeTab === 'viaticos' ? viaticoRows : activeTab === 'precios' ? sheetPreviews[activeSheetIdx]?.rows : muniRows).slice(0, isHeaderError ? 2 : 50).map((row) => {
+                                        {(activeTab === 'viaticos' ? viaticoRows : muniRows).slice(0, isHeaderError ? 2 : 50).map((row) => {
                                             const hasError = Array.from(mappedErrorRows).includes(row.fileRowNumber);
-                                            const hds = activeTab === 'viaticos' ? viaticoHeaders : activeTab === 'precios' ? sheetPreviews[activeSheetIdx]?.headers : muniHeaders;
-                                            const fds = activeTab === 'viaticos' ? viaticoFields : activeTab === 'precios' ? sheetPreviews[activeSheetIdx]?.fields : muniFields;
+                                            const hds = activeTab === 'viaticos' ? viaticoHeaders : muniHeaders;
+                                            const fds = activeTab === 'viaticos' ? viaticoFields : muniFields;
 
                                             return (
                                                 <tr key={row.rowNumber} className={hasError ? 'bg-red-50' : row.rowNumber % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>

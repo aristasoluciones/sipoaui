@@ -12,6 +12,7 @@ import { Column } from 'primereact/column';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { Dialog } from 'primereact/dialog';
 import { BreadCrumb } from 'primereact/breadcrumb';
+import { TabView, TabPanel } from 'primereact/tabview';
 import { useNotification } from '@/layout/context/notificationContext';
 import { PreciosService } from '@/src/services/precios.service';
 import { CategoriaPreciosService } from '@/src/services/categoriaPrecios.service';
@@ -24,10 +25,10 @@ import type { Precio, CategoriaPrecio } from '@/types/catalogos';
 type FormValues = {
     id: number | null;
     categoriaPrecioId: number | null;
-    nombre: string;
+    concepto: string;
     unidadMedida: string;
     subtipoCombustible: 'Magna' | 'Premium' | 'Diesel' | '';
-    precio: number | null;
+    costoTotal: number | null;
 };
 
 type Props = {
@@ -47,10 +48,10 @@ const SUBTIPO_COMBUSTIBLE_OPTIONS = [
 const makeInitialForm = (mode?: 'master' | 'combustibles'): FormValues => ({
     id: null,
     categoriaPrecioId: null,
-    nombre: '',
+    concepto: '',
     unidadMedida: mode === 'combustibles' ? 'Litro' : '',
     subtipoCombustible: '',
-    precio: null
+    costoTotal: null
 });
 
 const formatFecha = (iso?: string | null) => {
@@ -75,11 +76,13 @@ export default function PreciosPrototypeForm({ mode }: Props) {
 
     const [showAddCategoria, setShowAddCategoria] = useState(false);
     const [nuevaCategoria, setNuevaCategoria] = useState('');
-    const [editingCategoriaId, setEditingCategoriaId] = useState<number | null>(null);
+    const [editingCategoriaBase, setEditingCategoriaBase] = useState<string | null>(null);
     const [editingCategoriaNombre, setEditingCategoriaNombre] = useState('');
     const [saving, setSaving] = useState(false);
+    const [activePartidaIdx, setActivePartidaIdx] = useState(0);
     const [filterCategoria, setFilterCategoria] = useState<number | null>(null);
     const [showImportDialog, setShowImportDialog] = useState(false);
+    const [selectedItems, setSelectedItems] = useState<Precio[]>([]);
 
     const isCombustiblesView = mode === 'combustibles';
 
@@ -119,6 +122,38 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // ─── Helpers para categorías ───────────────────────────────────────────────
+
+    // Helper para obtener el nombre base de una categoría (sin el sufijo de partida)
+    const getBaseName = useCallback((name: string) => {
+        const match = name.match(/^(.*?)\s*\(P\d+\)$/);
+        return match ? match[1].trim() : name.trim();
+    }, []);
+
+    // Nombres base únicos de las categorías
+    const categoriasBaseUnicas = useMemo(() => {
+        const baseNames = new Set<string>();
+        categorias.forEach((c) => {
+            if (c.nombre !== COMBUSTIBLE_NOMBRE) {
+                baseNames.add(getBaseName(c.nombre));
+            }
+        });
+        return Array.from(baseNames).sort();
+    }, [categorias, getBaseName]);
+
+    // Mapa de nombre base a IDs de categorías relacionadas
+    const baseCategoriesMap = useMemo(() => {
+        const map: { [key: string]: number[] } = {};
+        categorias.forEach((c) => {
+            const baseName = getBaseName(c.nombre);
+            if (!map[baseName]) {
+                map[baseName] = [];
+            }
+            map[baseName].push(c.id);
+        });
+        return map;
+    }, [categorias, getBaseName]);
+
     // ─── Categoría combustible (reservada) ─────────────────────────────────────
 
     const categoriaCombustibleId = useMemo(() => categorias.find((c) => c.nombre === COMBUSTIBLE_NOMBRE)?.id ?? null, [categorias]);
@@ -127,25 +162,75 @@ export default function PreciosPrototypeForm({ mode }: Props) {
 
     const categoriaOptions = useMemo(() => {
         if (isCombustiblesView) return [];
-        return categorias.filter((c) => c.nombre !== COMBUSTIBLE_NOMBRE).map((c) => ({ label: c.nombre, value: c.id }));
-    }, [isCombustiblesView, categorias]);
+        return categoriasBaseUnicas
+            .filter((baseName) => baseName !== COMBUSTIBLE_NOMBRE)
+            .map((baseName) => {
+                // Encuentra la primera categoría con este nombre base para obtener un ID representativo
+                const cat = categorias.find((c) => getBaseName(c.nombre) === baseName);
+                return { label: baseName, value: cat?.id };
+            });
+    }, [isCombustiblesView, categorias, categoriasBaseUnicas, getBaseName]);
+
+    // Agrupar por Partida para las pestañas
+    const partidasAgrupadas = useMemo(() => {
+        if (isCombustiblesView) return [];
+
+        const map = new Map<number | string, { id: number | string; codigo: string; nombre: string; categorias: CategoriaPrecio[] }>();
+
+        categorias.forEach((cat) => {
+            if (cat.nombre === COMBUSTIBLE_NOMBRE) return;
+            const pId = cat.partida?.id || 'sin-partida';
+            if (!map.has(pId)) {
+                map.set(pId, {
+                    id: pId,
+                    codigo: cat.partida?.codigo || '',
+                    nombre: cat.partida?.nombre || (pId === 'sin-partida' ? 'Otras Categorías' : 'Sin Nombre'),
+                    categorias: []
+                });
+            }
+            map.get(pId)!.categorias.push(cat);
+        });
+
+        return Array.from(map.values()).sort((a, b) => {
+            if (a.id === 'sin-partida') return 1;
+            if (b.id === 'sin-partida') return -1;
+            return a.codigo.localeCompare(b.codigo);
+        });
+    }, [categorias, isCombustiblesView]);
 
     // ─── Filtrado de tabla ─────────────────────────────────────────────────────
 
     const filteredItems = useMemo(() => {
         let result = items;
+
         if (isCombustiblesView) {
-            result = result.filter((i) => i.categoriaPrecioId === categoriaCombustibleId);
+            result = items.filter((i) => i.subtipoCombustible !== null);
         } else {
-            result = result.filter((i) => i.categoriaPrecioId !== categoriaCombustibleId);
+            // Filtro por pestaña de Partida
+            if (activePartidaIdx > 0 && partidasAgrupadas.length > 0) {
+                const selectedPartida = partidasAgrupadas[activePartidaIdx - 1]; // -1 porque 0 es "Todo"
+                const catIds = selectedPartida.categorias.map((c) => c.id);
+                result = result.filter((i) => catIds.includes(i.categoriaPrecioId || 0));
+            }
+
+            // Filtro por dropdown de categoría (opcional sobre la partida)
             if (filterCategoria) {
                 result = result.filter((i) => i.categoriaPrecioId === filterCategoria);
             }
         }
-        return result;
-    }, [isCombustiblesView, items, categoriaCombustibleId, filterCategoria]);
 
-    const getCategoriaNombre = useCallback((id: number) => categorias.find((c) => c.id === id)?.nombre ?? '—', [categorias]);
+        return result;
+    }, [items, isCombustiblesView, filterCategoria, activePartidaIdx, partidasAgrupadas]);
+
+    // Devuelve el nombre de categoría para mostrar en tabla/CSV (usa nombre base sin partida)
+    const getCategoriaNombre = useCallback(
+        (id: number | null) => {
+            const cat = categorias.find((c) => c.id === id);
+            if (!cat) return '—';
+            return getBaseName(cat.nombre);
+        },
+        [categorias, getBaseName]
+    );
 
     // ─── Agregar categoría ──────────────────────────────────────────────────────
 
@@ -156,7 +241,9 @@ export default function PreciosPrototypeForm({ mode }: Props) {
             return;
         }
         try {
-            const nueva = await CategoriaPreciosService.create(nombre);
+            // Por defecto crea la categoría con partidaId = 1 (O el valor base de tu DB) ya que requerimos al menos una.
+            // Omitimos la creación dinámica de muchas para no saturar. Se asociará en un futuro a la partida real desde backend.
+            const nueva = await CategoriaPreciosService.create(nombre, 1);
             setCategorias((prev) => [...prev, nueva]);
             setForm((prev) => ({ ...prev, categoriaPrecioId: nueva.id }));
             setNuevaCategoria('');
@@ -172,32 +259,43 @@ export default function PreciosPrototypeForm({ mode }: Props) {
     // ─── Actualizar categoría ───────────────────────────────────────────────────
 
     const handleUpdateCategoria = useCallback(async () => {
-        if (!editingCategoriaId) return;
-        const nombre = editingCategoriaNombre.trim();
-        if (!nombre) {
+        if (!editingCategoriaBase) return;
+        const nombreNuevo = editingCategoriaNombre.trim();
+        if (!nombreNuevo) {
             error('Escribe un nombre válido para la categoría');
-            setEditingCategoriaId(null);
+            setEditingCategoriaBase(null);
             return;
         }
 
         try {
-            const actualizada = await CategoriaPreciosService.update(editingCategoriaId, nombre);
-            setCategorias((prev) => prev.map((c) => (c.id === actualizada.id ? actualizada : c)));
-            setEditingCategoriaId(null);
-            success(`Categoría renombrada a "${actualizada.nombre}"`);
+            const categoriasAActualizar = categorias.filter((c) => getBaseName(c.nombre) === editingCategoriaBase);
+            const actualizadas = await Promise.all(categoriasAActualizar.map((c) => CategoriaPreciosService.update(c.id, nombreNuevo, c.partidaId)));
+
+            setCategorias((prev) => {
+                const copia = [...prev];
+                for (const act of actualizadas) {
+                    const idx = copia.findIndex((c) => c.id === act.id);
+                    if (idx !== -1) copia[idx] = act;
+                }
+                return copia;
+            });
+            setEditingCategoriaBase(null);
+            success(`Múltiples categorías renombradas a "${nombreNuevo}"`);
         } catch (e: any) {
             const errData = e?.response?.data;
             const msg = errData?.errors ? Object.values(errData.errors).flat().join('\n') : errData?.message ?? 'Error al actualizar la categoría';
             error(msg);
         }
-    }, [editingCategoriaId, editingCategoriaNombre, error, success]);
+    }, [editingCategoriaBase, editingCategoriaNombre, error, success, categorias, getBaseName]);
 
     // ─── Eliminar categoría ─────────────────────────────────────────────────────
 
-    const handleDeleteCategoria = useCallback(
-        (categoria: CategoriaPrecio) => {
+    const handleDeleteCategoriaGroup = useCallback(
+        (catBase: string) => {
+            const categoriasAElminar = categorias.filter((c) => getBaseName(c.nombre) === catBase);
+
             confirmDialog({
-                message: `¿Eliminar la categoría "${categoria.nombre}"? Esta acción no se puede deshacer.`,
+                message: `¿Eliminar el grupo de categorías "${catBase}"? Esto borrará ${categoriasAElminar.length} categoría(s) interna(s). Esta acción no se puede deshacer.`,
                 header: 'Confirmar eliminación de categoría',
                 icon: 'pi pi-exclamation-triangle',
                 acceptLabel: 'Eliminar',
@@ -205,9 +303,10 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                 acceptClassName: 'p-button-danger',
                 accept: async () => {
                     try {
-                        await CategoriaPreciosService.delete(categoria.id);
-                        setCategorias((prev) => prev.filter((c) => c.id !== categoria.id));
-                        success(`Categoría "${categoria.nombre}" eliminada`);
+                        await Promise.all(categoriasAElminar.map((c) => CategoriaPreciosService.delete(c.id)));
+                        const idsEliminados = categoriasAElminar.map((c) => c.id);
+                        setCategorias((prev) => prev.filter((c) => !idsEliminados.includes(c.id)));
+                        success(`Grupo de categorías "${catBase}" eliminado`);
                     } catch (e: any) {
                         const errData = e?.response?.data;
                         const msg = errData?.errors ? Object.values(errData.errors).flat().join('\n') : errData?.message ?? 'Error al eliminar la categoría';
@@ -216,7 +315,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                 }
             });
         },
-        [success, error]
+        [success, error, categorias, getBaseName]
     );
 
     // ─── Exportar CSV ───────────────────────────────────────────────────────────
@@ -226,8 +325,8 @@ export default function PreciosPrototypeForm({ mode }: Props) {
             error('No hay registros para exportar');
             return;
         }
-        const headers = isCombustiblesView ? ['Nombre', 'Subtipo', 'Unidad', 'Precio (MXN)', 'Última actualización'] : ['Nombre', 'Categoría', 'Unidad', 'Precio (MXN)', 'Última actualización'];
-        const rows = filteredItems.map((item) => [item.nombre, isCombustiblesView ? item.subtipoCombustible || '' : getCategoriaNombre(item.categoriaPrecioId), item.unidadMedida, item.precio?.toString() ?? '', formatFecha(item.updatedAt)]);
+        const headers = isCombustiblesView ? ['Concepto', 'Subtipo', 'Unidad', 'Costo Total (MXN)', 'Última actualización'] : ['Concepto', 'Categoría', 'Unidad', 'Costo Total (MXN)', 'Última actualización'];
+        const rows = filteredItems.map((item) => [item.concepto, isCombustiblesView ? item.subtipoCombustible || '' : getCategoriaNombre(item.categoriaPrecioId), item.unidadMedida, item.costoTotal?.toString() ?? '', formatFecha(item.updatedAt)]);
         const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -248,17 +347,18 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         setForm(makeInitialForm(mode));
         setShowAddCategoria(false);
         setNuevaCategoria('');
+        setEditingCategoriaBase(null); // Clear editing state
     }, [mode]);
 
     const validate = useCallback((): string | null => {
-        if (!form.nombre.trim()) return 'El nombre es obligatorio';
+        if (!form.concepto.trim()) return 'El concepto es obligatorio';
         if (!form.unidadMedida.trim()) return 'La unidad de medida es obligatoria';
         if (isCombustiblesView) {
             if (!form.subtipoCombustible) return 'Selecciona el tipo de combustible';
         } else {
             if (!form.categoriaPrecioId) return 'Selecciona una categoría';
         }
-        if (!form.precio || form.precio <= 0) return 'El precio debe ser mayor a 0';
+        if (!form.costoTotal || form.costoTotal <= 0) return 'El costo total debe ser mayor a 0';
         return null;
     }, [form, isCombustiblesView]);
 
@@ -278,17 +378,17 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                 let updated: Precio;
                 if (isCombustiblesView) {
                     updated = await CombustiblesService.update(form.id, {
-                        nombre: form.nombre.trim(),
+                        concepto: form.concepto.trim(),
                         unidadMedida: form.unidadMedida.trim(),
-                        precio: form.precio!,
+                        costoTotal: form.costoTotal!,
                         subtipoCombustible: form.subtipoCombustible!
                     });
                 } else {
                     updated = await PreciosService.update(form.id, {
                         categoriaPrecioId: catId,
-                        nombre: form.nombre.trim(),
+                        concepto: form.concepto.trim(),
                         unidadMedida: form.unidadMedida.trim(),
-                        precio: form.precio!,
+                        costoTotal: form.costoTotal!,
                         subtipoCombustible: null
                     });
                 }
@@ -299,17 +399,17 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                 let nuevo: Precio;
                 if (isCombustiblesView) {
                     nuevo = await CombustiblesService.create({
-                        nombre: form.nombre.trim(),
+                        concepto: form.concepto.trim(),
                         unidadMedida: form.unidadMedida.trim(),
-                        precio: form.precio!,
+                        costoTotal: form.costoTotal!,
                         subtipoCombustible: form.subtipoCombustible!
                     });
                 } else {
                     nuevo = await PreciosService.create({
                         categoriaPrecioId: catId,
-                        nombre: form.nombre.trim(),
+                        concepto: form.concepto.trim(),
                         unidadMedida: form.unidadMedida.trim(),
-                        precio: form.precio!,
+                        costoTotal: form.costoTotal!,
                         subtipoCombustible: null
                     });
                 }
@@ -330,20 +430,21 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         setForm({
             id: item.id,
             categoriaPrecioId: item.categoriaPrecioId,
-            nombre: item.nombre,
+            concepto: item.concepto,
             unidadMedida: item.unidadMedida,
             subtipoCombustible: (item.subtipoCombustible as any) ?? '',
-            precio: item.precio
+            costoTotal: item.costoTotal
         });
         setShowAddCategoria(false);
         setNuevaCategoria('');
+        setEditingCategoriaBase(null);
         setShowDialog(true);
     }, []);
 
     const handleDelete = useCallback(
         (item: Precio) => {
             confirmDialog({
-                message: `¿Eliminar "${item.nombre}"?`,
+                message: `¿Eliminar "${item.concepto}"?`,
                 header: 'Confirmar eliminación',
                 icon: 'pi pi-exclamation-triangle',
                 acceptLabel: 'Eliminar',
@@ -372,14 +473,24 @@ export default function PreciosPrototypeForm({ mode }: Props) {
         });
         setShowAddCategoria(false);
         setNuevaCategoria('');
+        setEditingCategoriaBase(null); // Clear editing state
         setShowDialog(true);
     }, [mode, isCombustiblesView, categoriaCombustibleId]);
 
     // ─── Templates de columnas ─────────────────────────────────────────────────
 
-    const categoriaBodyTemplate = (row: Precio) => <Tag value={getCategoriaNombre(row.categoriaPrecioId)} severity="info" />;
+    const getNombreConPartida = useCallback(
+        (catId: number | null) => {
+            const cat = categorias.find((c) => c.id === catId);
+            if (!cat) return '—';
+            return cat.nombre;
+        },
+        [categorias]
+    );
+
+    const categoriaBodyTemplate = (row: Precio) => <Tag value={getNombreConPartida(row.categoriaPrecioId)} severity="info" />;
     const subtipoCombustibleBody = (row: Precio) => (row.subtipoCombustible ? <Tag value={row.subtipoCombustible} severity="warning" /> : <span>—</span>);
-    const precioBody = (row: Precio) => row.precio?.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) ?? '—';
+    const precioBody = (row: Precio) => row.costoTotal?.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) ?? '—';
     const unidadBody = (row: Precio) => <span className="text-sm">{row.unidadMedida}</span>;
     const fechaBody = (row: Precio) => <span className="text-sm text-600">{formatFecha(row.updatedAt)}</span>;
 
@@ -396,39 +507,64 @@ export default function PreciosPrototypeForm({ mode }: Props) {
     const pageDescription = isCombustiblesView ? 'Precios de referencia por tipo de combustible (MXN)' : 'Precios y tarifas de referencia institucionales (MXN)';
     const pageIcon = isCombustiblesView ? 'pi pi-car' : 'pi pi-dollar';
 
+    const confirmDeleteMultiple = () => {
+        confirmDialog({
+            message: `¿Estás seguro de eliminar los ${selectedItems.length} registros seleccionados? Esta acción no se puede deshacer.`,
+            header: 'Eliminación Masiva',
+            icon: 'pi pi-exclamation-triangle',
+            acceptLabel: 'Sí, eliminar',
+            rejectLabel: 'No',
+            acceptClassName: 'p-button-danger',
+            accept: async () => {
+                try {
+                    setLoading(true);
+                    const ids = selectedItems.map((item) => item.id).filter((id) => id !== null) as number[];
+                    await PreciosService.deleteMass(ids);
+                    success(`${selectedItems.length} registros eliminados correctamente`);
+                    setSelectedItems([]);
+                    loadData();
+                } catch (err) {
+                    error('Error al eliminar los registros seleccionados');
+                } finally {
+                    setLoading(false);
+                }
+            }
+        });
+    };
+
     return (
         <div className="grid">
             <div className="col-12">
+                <BreadCrumb home={breadcrumbHome} model={breadcrumbItems} className="mb-4 border-none bg-transparent p-0 text-sm" />
+
                 <ConfirmDialog />
 
-                {/* ── Breadcrumb ── */}
-                <BreadCrumb model={breadcrumbItems} home={breadcrumbHome} className="mb-4" />
-
-                {/* ── Header ── */}
-                <div className="flex align-items-center justify-content-between mb-4">
+                {/* ── Header Section ── */}
+                <div className="flex align-items-center justify-content-between mb-5">
                     <div className="flex align-items-center">
-                        <i className={`${pageIcon} text-3xl text-primary mr-3`}></i>
+                        <i className={`pi ${isCombustiblesView ? 'pi-filter' : 'pi-dollar'} text-4xl text-pink-500 mr-3`}></i>
                         <div>
-                            <h2 className="text-2xl font-bold text-900 m-0">{pageTitle}</h2>
-                            <p className="text-600 m-0">{pageDescription}</p>
+                            <h1 className="m-0 text-3xl font-bold text-900">{isCombustiblesView ? 'Catálogo de Combustibles' : 'Catálogo de Precios y Tarifas'}</h1>
+                            <p className="text-600 m-0">Administra los costos base para el presupuesto SIPOA</p>
                         </div>
                     </div>
-                    <Button label="Regresar a catálogos" icon="pi pi-arrow-left" className="p-button-outlined" onClick={() => router.push('/catalogos')} />
+                    <Button label="Regresar a catálogos" icon="pi pi-arrow-left" outlined className="p-button-secondary text-pink-500 border-pink-400" onClick={() => router.push('/catalogos')} />
                 </div>
 
-                {/* ── Toolbar ── */}
-                <div className="card mb-3">
-                    <div className="flex justify-content-between align-items-center">
+                {/* ── Toolbar & Table Structure ── */}
+                <div className="card shadow-2 border-round-2xl border-1 border-300 bg-white p-0 mb-4 overflow-hidden">
+                    <div className="flex justify-content-between align-items-center p-4 border-bottom-1 border-200 surface-50">
                         <div className="flex gap-2 align-items-center">
-                            <Button label="Nuevo" icon="pi pi-plus" onClick={openNew} />
+                            <Button label="Registrar" icon="pi pi-plus" className="border-round-lg" onClick={openNew} />
                             {!isCombustiblesView && (
-                                <Dropdown value={filterCategoria} options={categoriaOptions} onChange={(e) => setFilterCategoria(e.value)} placeholder="Filtrar por categoría" showClear className="ml-2" style={{ minWidth: '15rem' }} />
+                                <Dropdown value={filterCategoria} options={categoriaOptions} onChange={(e) => setFilterCategoria(e.value)} placeholder="Filtrar por categoría" showClear className="ml-2 w-15rem md:w-20rem border-round-lg" />
                             )}
                         </div>
                         <div className="flex gap-2">
-                            <Button label="Importar" icon="pi pi-upload" severity="secondary" tooltip="Importar desde archivo" tooltipOptions={{ position: 'top' }} onClick={() => setShowImportDialog(true)} />
-                            <Button label="Exportar" icon="pi pi-download" severity="help" tooltip="Exportar a CSV" tooltipOptions={{ position: 'top' }} onClick={handleExportCSV} />
-                            <Button icon="pi pi-refresh" severity="secondary" onClick={loadData} tooltip="Actualizar" tooltipOptions={{ position: 'top' }} loading={loading} />
+                            {selectedItems.length > 0 && <Button label={`Eliminar ${selectedItems.length}`} icon="pi pi-trash" severity="danger" className="border-round-lg pulse" onClick={confirmDeleteMultiple} />}
+                            <Button label="Importar" icon="pi pi-upload" severity="secondary" className="border-round-lg" onClick={() => setShowImportDialog(true)} />
+                            <Button label="Exportar" icon="pi pi-download" severity="help" className="border-round-lg" onClick={handleExportCSV} />
+                            <Button icon="pi pi-refresh" severity="secondary" className="border-round-lg" onClick={loadData} loading={loading} />
                         </div>
                     </div>
                 </div>
@@ -447,15 +583,16 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                                 .filter((c) => c.nombre !== COMBUSTIBLE_NOMBRE)
                                 .map((categoria) => {
                                     const count = items.filter((i) => i.categoriaPrecioId === categoria.id).length;
+                                    const displayName = categoria.partida ? `${categoria.nombre} (${categoria.partida.codigo})` : categoria.nombre;
                                     return (
                                         <div key={categoria.id} className="flex align-items-center gap-1 surface-100 border-round px-3 py-2">
-                                            {editingCategoriaId === categoria.id ? (
+                                            {editingCategoriaBase === String(categoria.id) ? (
                                                 <InputText
                                                     value={editingCategoriaNombre}
                                                     onChange={(e) => setEditingCategoriaNombre(e.target.value)}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter') handleUpdateCategoria();
-                                                        if (e.key === 'Escape') setEditingCategoriaId(null);
+                                                        if (e.key === 'Escape') setEditingCategoriaBase(null);
                                                     }}
                                                     onBlur={handleUpdateCategoria}
                                                     autoFocus
@@ -466,12 +603,12 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                                                 <span
                                                     className="text-sm font-medium cursor-pointer"
                                                     onDoubleClick={() => {
-                                                        setEditingCategoriaId(categoria.id);
+                                                        setEditingCategoriaBase(String(categoria.id));
                                                         setEditingCategoriaNombre(categoria.nombre);
                                                     }}
                                                     title="Doble clic para editar"
                                                 >
-                                                    {categoria.nombre}
+                                                    {displayName}
                                                 </span>
                                             )}
                                             {count > 0 && <Tag value={count.toString()} severity="info" className="ml-1" style={{ fontSize: '0.7rem' }} />}
@@ -480,7 +617,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                                                 text
                                                 size="small"
                                                 severity="danger"
-                                                onClick={() => handleDeleteCategoria(categoria)}
+                                                onClick={() => handleDeleteCategoriaGroup(categoria.nombre)}
                                                 tooltip={count > 0 ? `Tiene ${count} precio(s) asociado(s)` : 'Eliminar categoría'}
                                                 tooltipOptions={{ position: 'top' }}
                                                 className="ml-1"
@@ -523,26 +660,86 @@ export default function PreciosPrototypeForm({ mode }: Props) {
 
                 {/* ── DataTable ── */}
                 <div className="card">
-                    <DataTable
-                        value={filteredItems}
-                        dataKey="id"
-                        paginator
-                        rows={10}
-                        loading={loading}
-                        emptyMessage="No se encontraron precios registrados. Haz clic en «Nuevo» para agregar uno."
-                        sortField="updatedAt"
-                        sortOrder={-1}
-                        rowsPerPageOptions={[5, 10, 25]}
-                        responsiveLayout="scroll"
-                    >
-                        <Column field="nombre" header="Nombre" sortable style={{ minWidth: '14rem' }} />
-                        {!isCombustiblesView && <Column header="Categoría" body={categoriaBodyTemplate} style={{ minWidth: '10rem' }} />}
-                        {isCombustiblesView && <Column header="Tipo de Combustible" body={subtipoCombustibleBody} style={{ minWidth: '12rem' }} />}
-                        <Column header="Unidad" body={unidadBody} style={{ minWidth: '8rem' }} />
-                        <Column header="Precio (MXN)" body={precioBody} style={{ minWidth: '10rem' }} />
-                        <Column header="Última actualización" body={fechaBody} style={{ minWidth: '12rem' }} />
-                        <Column body={actionsBody} headerStyle={{ width: '8rem' }} />
-                    </DataTable>
+                    {isCombustiblesView ? (
+                        <DataTable
+                            value={filteredItems}
+                            dataKey="id"
+                            paginator
+                            rows={10}
+                            loading={loading}
+                            emptyMessage="No se encontraron precios registrados. Haz clic en «Nuevo» para agregar uno."
+                            sortField="updatedAt"
+                            sortOrder={-1}
+                            rowsPerPageOptions={[5, 10, 25]}
+                            responsiveLayout="scroll"
+                            selectionMode="multiple"
+                            selection={selectedItems}
+                            onSelectionChange={(e: any) => setSelectedItems(e.value)}
+                        >
+                            <Column selectionMode="multiple" headerStyle={{ width: '3rem', backgroundColor: '#f8fafc' }}></Column>
+                            <Column field="concepto" header="Concepto" sortable style={{ minWidth: '14rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                            <Column header="Tipo de Combustible" body={subtipoCombustibleBody} style={{ minWidth: '12rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                            <Column header="Unidad" body={unidadBody} style={{ minWidth: '8rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                            <Column header="Precio (MXN)" body={precioBody} style={{ minWidth: '10rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                            <Column header="Última actualización" body={fechaBody} style={{ minWidth: '12rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                            <Column body={actionsBody} headerStyle={{ width: '8rem', backgroundColor: '#f8fafc' }} />
+                        </DataTable>
+                    ) : (
+                        <TabView activeIndex={activePartidaIdx} onTabChange={(e) => setActivePartidaIdx(e.index)}>
+                            <TabPanel header="Todo">
+                                <DataTable
+                                    value={filteredItems}
+                                    loading={loading}
+                                    className="p-datatable-sm overflow-hidden"
+                                    rowHover
+                                    selectionMode="multiple"
+                                    selection={selectedItems}
+                                    onSelectionChange={(e: any) => setSelectedItems(e.value)}
+                                    dataKey="id"
+                                    emptyMessage="No se encontraron registros."
+                                    paginator
+                                    rows={15}
+                                    rowsPerPageOptions={[15, 30, 50]}
+                                    responsiveLayout="scroll"
+                                >
+                                    <Column selectionMode="multiple" headerStyle={{ width: '3rem', backgroundColor: '#f8fafc' }}></Column>
+                                    <Column field="concepto" header="Concepto" sortable style={{ minWidth: '14rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                    <Column header="Categoría" body={categoriaBodyTemplate} style={{ minWidth: '10rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                    <Column header="Unidad" body={unidadBody} style={{ minWidth: '8rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                    <Column header="Precio (MXN)" body={precioBody} style={{ minWidth: '10rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                    <Column header="Última actualización" body={fechaBody} style={{ minWidth: '12rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                    <Column body={actionsBody} headerStyle={{ width: '8rem', backgroundColor: '#f8fafc' }} />
+                                </DataTable>
+                            </TabPanel>
+                            {partidasAgrupadas.map((group) => (
+                                <TabPanel key={group.id} header={group.codigo ? `${group.nombre} (${group.codigo})` : group.nombre}>
+                                    <DataTable
+                                        value={filteredItems}
+                                        dataKey="id"
+                                        paginator
+                                        rows={10}
+                                        loading={loading}
+                                        emptyMessage={`No hay registros para ${group.nombre}.`}
+                                        sortField="updatedAt"
+                                        sortOrder={-1}
+                                        rowsPerPageOptions={[5, 10, 25]}
+                                        responsiveLayout="scroll"
+                                        selectionMode="multiple"
+                                        selection={selectedItems}
+                                        onSelectionChange={(e: any) => setSelectedItems(e.value)}
+                                    >
+                                        <Column selectionMode="multiple" headerStyle={{ width: '3rem', backgroundColor: '#f8fafc' }}></Column>
+                                        <Column field="concepto" header="Concepto" sortable style={{ minWidth: '14rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                        <Column header="Categoría" body={categoriaBodyTemplate} style={{ minWidth: '10rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                        <Column header="Unidad" body={unidadBody} style={{ minWidth: '8rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                        <Column header="Precio (MXN)" body={precioBody} style={{ minWidth: '10rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                        <Column header="Última actualización" body={fechaBody} style={{ minWidth: '12rem' }} headerStyle={{ backgroundColor: '#f8fafc', fontWeight: 600, color: '#475569', fontSize: '0.92rem' }} />
+                                        <Column body={actionsBody} headerStyle={{ width: '8rem', backgroundColor: '#f8fafc' }} />
+                                    </DataTable>
+                                </TabPanel>
+                            ))}
+                        </TabView>
+                    )}
                 </div>
 
                 {/* ── Dialog: Crear / Editar ── */}
@@ -554,15 +751,15 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                         }}
                         className="flex flex-column gap-4 pt-2"
                     >
-                        {/* Nombre */}
+                        {/* Nombre / Concepto */}
                         <div className="field">
-                            <label htmlFor="nombre" className="block font-medium mb-2">
-                                Nombre <span className="text-red-500">*</span>
+                            <label htmlFor="concepto" className="block font-medium mb-2">
+                                Concepto <span className="text-red-500">*</span>
                             </label>
                             <InputText
-                                id="nombre"
-                                value={form.nombre}
-                                onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
+                                id="concepto"
+                                value={form.concepto}
+                                onChange={(e) => setForm((p) => ({ ...p, concepto: e.target.value }))}
                                 placeholder={isCombustiblesView ? 'Ej. Gasolina PEMEX Tuxtla' : 'Ej. Servicio de fotocopiado'}
                                 className="w-full"
                                 autoFocus
@@ -586,7 +783,11 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                                 <Dropdown
                                     id="categoria"
                                     value={form.categoriaPrecioId}
-                                    options={categoriaOptions}
+                                    options={categoriasBaseUnicas.map((catBase) => {
+                                        // Busca la primera categoría con este nombre base
+                                        const cat = categorias.find((c) => getBaseName(c.nombre) === catBase);
+                                        return { label: catBase, value: cat?.id };
+                                    })}
                                     onChange={(e) => setForm((p) => ({ ...p, categoriaPrecioId: e.value }))}
                                     placeholder="Seleccionar categoría..."
                                     className="w-full"
@@ -596,7 +797,7 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                         ) : (
                             <div className="field">
                                 <label className="block font-medium mb-2">Categoría</label>
-                                <InputText value={COMBUSTIBLE_NOMBRE} className="w-full" disabled />
+                                <InputText value={COMBUSTIBLE_NOMBRE} disabled className="w-full" />
                                 <small className="block mt-1 text-500">Asignada automáticamente por el sistema.</small>
                             </div>
                         )}
@@ -605,25 +806,25 @@ export default function PreciosPrototypeForm({ mode }: Props) {
                         {isCombustiblesView && (
                             <div className="field">
                                 <label htmlFor="subtipo" className="block font-medium mb-2">
-                                    Tipo de Combustible <span className="text-red-500">*</span>
+                                    Tipo de combustible <span className="text-red-500">*</span>
                                 </label>
                                 <Dropdown
                                     id="subtipo"
                                     value={form.subtipoCombustible}
                                     options={SUBTIPO_COMBUSTIBLE_OPTIONS}
                                     onChange={(e) => setForm((p) => ({ ...p, subtipoCombustible: e.value }))}
-                                    placeholder="Seleccionar tipo de combustible..."
+                                    placeholder="Seleccionar tipo..."
                                     className="w-full"
                                 />
                             </div>
                         )}
 
-                        {/* Precio */}
+                        {/* Precio / Costo Total */}
                         <div className="field">
-                            <label htmlFor="precio" className="block font-medium mb-2">
-                                {isCombustiblesView ? 'Precio por litro (MXN)' : 'Precio (MXN)'} <span className="text-red-500">*</span>
+                            <label htmlFor="costo" className="block font-medium mb-2">
+                                {isCombustiblesView ? 'Precio por litro (MXN)' : 'Costo Total (MXN)'} <span className="text-red-500">*</span>
                             </label>
-                            <InputNumber id="precio" value={form.precio} onValueChange={(e) => setForm((p) => ({ ...p, precio: e.value ?? null }))} mode="currency" currency="MXN" locale="es-MX" min={0} placeholder="0.00" className="w-full" />
+                            <InputNumber id="costo" value={form.costoTotal} onValueChange={(e) => setForm((p) => ({ ...p, costoTotal: e.value ?? null }))} mode="currency" currency="MXN" locale="es-MX" min={0} placeholder="$0.00" className="w-full" />
                         </div>
 
                         {/* Footer */}

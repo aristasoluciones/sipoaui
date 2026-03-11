@@ -129,6 +129,8 @@ export interface PartidaPresupuestariaApi extends CatalogoItemApi {
 export interface CategoriaPrecio {
   id: number;
   nombre: string;
+  partidaId: number;
+  partida?: Partida;
   createdAt: string;
   updatedAt?: string;
 }
@@ -136,6 +138,8 @@ export interface CategoriaPrecio {
 export interface CategoriaPrecioApi {
   id: number;
   nombre: string;
+  partida_id: number;
+  partida?: PartidaApi;
   created_at: string;
   updated_at?: string;
 }
@@ -144,9 +148,9 @@ export interface CategoriaPrecioApi {
 export interface Precio {
   id: number;
   categoriaPrecioId: number;
-  nombre: string;
+  concepto: string;
   unidadMedida: string;
-  precio: number;
+  costoTotal: number;
   subtipoCombustible?: string | null;
   createdAt: string;
   updatedAt?: string;
@@ -155,9 +159,9 @@ export interface Precio {
 export interface PrecioApi {
   id: number;
   categoria_precio_id: number;
-  nombre: string;
+  concepto: string;
   unidad_medida: string;
-  precio: number;
+  costo_total: number;
   subtipo_combustible?: string | null;
   created_at: string;
   updated_at?: string;

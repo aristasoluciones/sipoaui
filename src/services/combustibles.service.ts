@@ -7,9 +7,9 @@ const API_ENDPOINT = '/api/catalogos/combustibles';
 const transformFromApi = (data: PrecioApi): Precio => ({
   id: data.id,
   categoriaPrecioId: data.categoria_precio_id,
-  nombre: data.nombre,
+  concepto: data.concepto,
   unidadMedida: data.unidad_medida,
-  precio: data.precio,
+  costoTotal: Number(data.costo_total),
   subtipoCombustible: data.subtipo_combustible ?? null,
   createdAt: data.created_at,
   updatedAt: data.updated_at,
@@ -17,9 +17,9 @@ const transformFromApi = (data: PrecioApi): Precio => ({
 
 // Transforma del tipo frontend (camelCase) al formato que espera la API (snake_case)
 const transformToApi = (data: Partial<Precio>): Partial<PrecioApi> => ({
-  nombre: data.nombre,
+  concepto: data.concepto,
   unidad_medida: data.unidadMedida,
-  precio: data.precio,
+  costo_total: data.costoTotal,
   subtipo_combustible: data.subtipoCombustible ?? undefined,
 });
 

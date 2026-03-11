@@ -15,7 +15,7 @@ import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { Checkbox } from 'primereact/checkbox';
 import { Badge } from 'primereact/badge';
 import { Tag } from 'primereact/tag';
-import ImportCatalogDialog from './ImportCatalogDialog';
+import ImportViaticosDialog from './ImportViaticosDialog';
 import { useNotification } from '@/layout/context/notificationContext';
 import { viaticosService, Viatico, Municipio, ZonaType, SubZona1 } from '@/src/services/viaticos.service';
 
@@ -905,14 +905,8 @@ export default function ViaticosPrototypeForm() {
                     </div>
                 </Dialog>
 
-                <ImportCatalogDialog
-                    visible={showImportDialog}
-                    onHide={() => setShowImportDialog(false)}
-                    catalogKey="viaticos"
-                    catalogTitle="Importar catálogo de Viáticos"
-                    onRefresh={loadData}
-                    description="Selecciona un archivo CSV, XLS o XLSX para actualizar masivamente las cuotas de viáticos."
-                />
+                {/* ── Dialog: Importación Especializada para Viáticos ── */}
+                <ImportViaticosDialog visible={showImportDialog} onHide={() => setShowImportDialog(false)} onRefresh={loadData} />
             </div>
         </div>
     );

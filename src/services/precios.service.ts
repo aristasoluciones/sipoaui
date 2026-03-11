@@ -7,9 +7,9 @@ const API_ENDPOINT = '/api/catalogos/precios';
 const transformFromApi = (data: PrecioApi): Precio => ({
   id: data.id,
   categoriaPrecioId: data.categoria_precio_id,
-  nombre: data.nombre,
+  concepto: data.concepto,
   unidadMedida: data.unidad_medida,
-  precio: data.precio,
+  costoTotal: Number(data.costo_total),
   subtipoCombustible: data.subtipo_combustible ?? null,
   createdAt: data.created_at,
   updatedAt: data.updated_at,
@@ -18,9 +18,9 @@ const transformFromApi = (data: PrecioApi): Precio => ({
 // Transforma del tipo frontend (camelCase) al formato que espera la API (snake_case)
 const transformToApi = (data: Partial<Precio>): Partial<PrecioApi> => ({
   categoria_precio_id: data.categoriaPrecioId,
-  nombre: data.nombre,
-  unidad_medida: data.unidadMedida,
-  precio: data.precio,
+  concepto: data.concepto,
+  unidad_medida: data.unidadMedida, 
+  costo_total: data.costoTotal,
   subtipo_combustible: data.subtipoCombustible ?? undefined,
 });
 
@@ -43,4 +43,18 @@ export const PreciosService = {
   async delete(id: number): Promise<void> {
     await http.delete(`${API_ENDPOINT}/${id}`);
   },
+
+  async import(file: File): Promise<{ total_created: number; total_updated: number }> {
+    const formData = new FormData();
+    formData.append('archivo', file);
+    formData.append('catalogo', 'precios');
+    const response = await http.post('/api/catalogos/importar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+  },
+
+  async deleteMass(ids: number[]): Promise<any> {
+    return await http.delete('/api/catalogos/precios/mass', { data: { ids } });
+  }
 };

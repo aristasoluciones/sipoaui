@@ -1,15 +1,17 @@
 'use client';
 
-import CatalogoBasePage from '@/src/components/CatalogoBasePage';
+import ViaticosPrototypeForm from '@/src/components/catalogos/ViaticosPrototypeForm';
+import { usePermissions } from '@/src/hooks/usePermissions';
+import { AccessDenied } from '@/src/components/AccessDeneid';
 
 const ViaticosPage = () => {
-  return (
-    <CatalogoBasePage
-      catalogoKey="viaticos"
-      title="Viáticos"
-      description="Gestión de tarifas de viáticos por zona geográfica"
-    />
-  );
+    const { hasAnyPermission } = usePermissions();
+
+    if (!hasAnyPermission(['catalogos.tabuladores.viaticos'])) {
+        return <AccessDenied message="No tienes permisos para acceder a este catálogo." variant="detailed" />;
+    }
+
+    return <ViaticosPrototypeForm />;
 };
 
 export default ViaticosPage;

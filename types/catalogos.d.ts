@@ -125,18 +125,46 @@ export interface PartidaPresupuestariaApi extends CatalogoItemApi {
   presupuesto_asignado?: number;
 }
 
-export interface Precio extends CatalogoItem {
-  unidad: string;
-  moneda: 'MXN' | 'USD' | 'EUR';
-  precio: number;
-  vigencia: string;
+// Categoría de Precios
+export interface CategoriaPrecio {
+  id: number;
+  nombre: string;
+  partidaId: number;
+  partida?: Partida;
+  createdAt: string;
+  updatedAt?: string;
 }
 
-export interface PrecioApi extends CatalogoItemApi {
-  unidad: string;
-  moneda: 'MXN' | 'USD' | 'EUR';
-  precio: number;
-  vigencia: string;
+export interface CategoriaPrecioApi {
+  id: number;
+  nombre: string;
+  partida_id: number;
+  partida?: PartidaApi;
+  created_at: string;
+  updated_at?: string;
+}
+
+// Precio
+export interface Precio {
+  id: number;
+  categoriaPrecioId: number;
+  concepto: string;
+  unidadMedida: string;
+  costoTotal: number;
+  subtipoCombustible?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface PrecioApi {
+  id: number;
+  categoria_precio_id: number;
+  concepto: string;
+  unidad_medida: string;
+  costo_total: number;
+  subtipo_combustible?: string | null;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface CargosPuestos extends CatalogoItem {

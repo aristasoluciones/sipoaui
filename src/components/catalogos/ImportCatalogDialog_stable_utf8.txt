@@ -1,0 +1,763 @@
+﻿'use client';
+
+import React, { useState, useRef, useCallback } from 'react';
+import { Dialog } from 'primereact/dialog';
+import { Button } from 'primereact/button';
+import { Tag } from 'primereact/tag';
+import { useNotification } from '@/layout/context/notificationContext';
+import { formatApiError } from '@/src/utils';
+import http from '@/src/lib/axios';
+
+/**
+ * Interfaces para el resultado de importaci├│n
+ */
+export interface ImportErrorItem {
+    row?: number | string;
+    field?: string;
+    message?: string;
+    [key: string]: any;
+}
+
+export interface ImportResult {
+    totalCreated: number;
+    totalUpdated: number;
+    totalErrors: number;
+    errors: ImportErrorItem[];
+    details?: {
+        [key: string]: {
+            total_created: number;
+            total_updated: number;
+            total_errors: number;
+            total_success: number;
+        };
+    };
+}
+
+export interface ImportPreviewRow {
+    rowNumber: number;
+    fileRowNumber: number;
+    backendRowNumber?: number;
+    values: string[];
+}
+
+interface ImportCatalogDialogProps {
+    visible: boolean;
+    onHide: () => void;
+    onRefresh?: () => Promise<void>;
+    catalogKey: string;
+    catalogTitle: string;
+    description?: string;
+}
+
+const normalizeText = (t: string) =>
+    t
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+const CATALOG_REQUIREMENTS: Record<string, string[]> = {
+    unidades: ['codigo', 'nombre', 'estatus'],
+    objetivos: ['nombre', 'estatus'],
+    politicas: ['nombre', 'estatus'],
+    programas: ['nombre', 'estatus'],
+    marcos_normativos: ['nombre', 'descripcion', 'estatus'],
+    tipos_actividad: ['nombre', 'descripcion', 'estatus'],
+    entregables: ['nombre', 'descripcion', 'estatus'],
+    beneficiarios: ['nombre', 'estatus'],
+    viaticos: ['nivel', 'categoria'],
+    municipios: ['nombre'], // clasificacion_zona se detecta din├ímicamente
+    precios: ['nombre', 'unidad_medida', 'precio'],
+    combustibles: ['nombre', 'unidad_medida', 'precio', 'subtipo_combustible']
+};
+
+const ImportCatalogDialog: React.FC<ImportCatalogDialogProps> = ({ visible, onHide, onRefresh, catalogKey, catalogTitle, description = 'Selecciona un archivo CSV, XLS o XLSX para importar datos a este cat├ílogo.' }) => {
+    const { success: showMsgSuccess, error: showMsgError } = useNotification();
+
+    const [importing, setImporting] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importResult, setImportResult] = useState<ImportResult | null>(null);
+
+    // Estados de previsualizaci├│n
+    const [previewHeaders, setPreviewHeaders] = useState<string[]>([]);
+    const [previewRows, setPreviewRows] = useState<ImportPreviewRow[]>([]);
+    const [allPreviewRows, setAllPreviewRows] = useState<ImportPreviewRow[]>([]);
+
+    // Estados para previsualizaci├│n dual (Vi├íticos y Municipios)
+    const [muniHeaders, setMuniHeaders] = useState<string[]>([]);
+    const [muniFields, setMuniFields] = useState<string[]>([]); // Nombres t├®cnicos de campos
+    const [muniRows, setMuniRows] = useState<ImportPreviewRow[]>([]);
+
+    const [viaticoHeaders, setViaticoHeaders] = useState<string[]>([]);
+    const [viaticoFields, setViaticoFields] = useState<string[]>([]); // Nombres t├®cnicos de campos
+    const [viaticoRows, setViaticoRows] = useState<ImportPreviewRow[]>([]);
+
+    const [activeTab, setActiveTab] = useState<'municipios' | 'viaticos'>('viaticos');
+    const [structureError, setStructureError] = useState<string | null>(null);
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const resetState = useCallback(() => {
+        setImportFile(null);
+        setPreviewHeaders([]);
+        setPreviewRows([]);
+        setAllPreviewRows([]);
+        setMuniHeaders([]);
+        setMuniFields([]);
+        setMuniRows([]);
+        setViaticoHeaders([]);
+        setViaticoFields([]);
+        setViaticoRows([]);
+        setImportResult(null);
+        setImporting(false);
+        setStructureError(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    }, []);
+
+    const handleHide = () => {
+        if (importing) return;
+        onHide();
+    };
+
+    const parseCsvRow = (line: string) => {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            const next = line[i + 1];
+            if (char === '"' && inQuotes && next === '"') {
+                current += '"';
+                i++;
+                continue;
+            }
+            if (char === '"') {
+                inQuotes = !inQuotes;
+                continue;
+            }
+            if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+                continue;
+            }
+            current += char;
+        }
+        result.push(current.trim());
+        return result;
+    };
+
+    const loadPreviewFromFile = async (file: File) => {
+        const extension = file.name.split('.').pop()?.toLowerCase();
+        let rows: string[][] = [];
+
+        try {
+            let technicalMerges: any[] = [];
+            if (extension === 'xlsx' || extension === 'xls') {
+                const XLSX = await import('xlsx');
+                const buffer = await file.arrayBuffer();
+                const workbook = XLSX.read(buffer, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const firstSheet = workbook.Sheets[firstSheetName];
+
+                // IMPORTANTE: Recuperar unificaciones (merges) para que no se pierdan datos en celdas unificadas
+                technicalMerges = firstSheet['!merges'] || [];
+                rows = (XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' }) as any[][]).map((row) => row.map((cell) => String(cell ?? '').trim()));
+
+                // Aplicar l├│gica de unificaci├│n (merges) b├ísica para previsualizaci├│n
+                technicalMerges.forEach((merge) => {
+                    const firstVal = rows[merge.s.r]?.[merge.s.c] || '';
+                    if (firstVal !== '') {
+                        for (let r = merge.s.r; r <= merge.e.r; r++) {
+                            for (let c = merge.s.c; c <= merge.e.c; c++) {
+                                if (r === merge.s.r && c === merge.s.c) continue;
+                                if (rows[r] && rows[r][c] === '') {
+                                    rows[r][c] = firstVal;
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                const content = await file.text();
+                rows = content
+                    .split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                    .map((line) => parseCsvRow(line));
+            }
+
+            if (!rows.length) {
+                setPreviewHeaders([]);
+                setPreviewRows([]);
+                setAllPreviewRows([]);
+                return;
+            }
+
+            // Detecci├│n de Municipios (Vertical) - Palabras clave ampliadas
+            const muniKeywords = ['zona', 'fuera', 'exterior', 'chiapas', 'estado', 'marginacion', 'muy alto', 'alto', 'medio', 'bajo'];
+            const nMuniKeywords = muniKeywords.map(normalizeText);
+            let muniHeaderIdx = -1;
+            let muniMatches = -1;
+
+            // Escanear para encontrar la MEJOR secci├│n de Municipios (buscando Nombres de verdad)
+            for (let i = 0; i < Math.min(rows.length, 200); i++) {
+                const row = rows[i];
+                let keywordsWeight = 0;
+                let actualNamesBelow = 0;
+
+                row.forEach((cell, colIdx) => {
+                    const val = normalizeText(String(cell || ''));
+                    // Si el encabezado parece de zona...
+                    if (val.includes('zona') || val.includes('fuera') || val.includes('exterior')) {
+                        keywordsWeight += 5; // Mucho peso a las palabras clave
+
+                        // Mirar si abajo hay NOMBRES (no precios)
+                        for (let r = i + 1; r < Math.min(rows.length, i + 8); r++) {
+                            const cVal = String(rows[r]?.[colIdx] || '').trim();
+                            if (cVal === '' || cVal === '-') continue;
+                            const isPrice = /^\$?\d{1,3}(,\d{3})*(\.\d{2})?$/.test(cVal) || /^\d+(\.\d+)?$/.test(cVal);
+                            if (!isPrice && /[a-zA-Z├í├®├¡├│├║├ü├ë├ì├ô├Ü├▒├æ]{3,}/.test(cVal)) {
+                                actualNamesBelow += 2;
+                            } else if (isPrice) {
+                                actualNamesBelow -= 10; // Penalizar fuertemente si encontramos precios (es la tabla de vi├íticos)
+                            }
+                        }
+                    }
+                });
+
+                const totalScore = keywordsWeight + actualNamesBelow;
+                if (totalScore > muniMatches && totalScore > 0) {
+                    muniMatches = totalScore;
+                    muniHeaderIdx = i;
+                }
+            }
+
+            // Detecci├│n de Vi├íticos (Largo)
+            const viaticoKeywords = ['nivel', 'categoria', 'cuota', 'internacional'];
+            const nViaticoKeywords = viaticoKeywords.map(normalizeText);
+            let viaticoHeaderIdx = -1;
+            let viaticoMatches = -1;
+
+            for (let i = 0; i < Math.min(rows.length, 50); i++) {
+                const row = rows[i];
+                let vMatch = 0;
+                row.forEach((cell) => {
+                    const val = normalizeText(String(cell || ''));
+                    if (nViaticoKeywords.some((kw) => val.includes(kw))) vMatch++;
+                });
+                if (vMatch > viaticoMatches) {
+                    viaticoMatches = vMatch;
+                    viaticoHeaderIdx = i;
+                }
+            }
+
+            // Procesar Municipios
+            let finalMuniHeaders: string[] = [];
+            let finalMuniFields: string[] = [];
+            let finalMuniRows: ImportPreviewRow[] = [];
+            if (muniMatches > 0) {
+                const realHeaderIdx = muniHeaderIdx;
+                const detRow = rows[realHeaderIdx];
+                const validIndices: number[] = [];
+
+                detRow.forEach((h, colIdx) => {
+                    const val = String(h || '').trim();
+                    const nVal = normalizeText(val);
+                    if (val === '' || (!nMuniKeywords.some((kw) => nVal.includes(kw)) && !nVal.includes('zona'))) return;
+
+                    let nameCount = 0;
+                    let priceCount = 0;
+                    const scanRows = Math.min(rows.length, realHeaderIdx + 50);
+                    const skipKeywords = ['zona 1', 'zona 2', 'zona 3', 'muy alto', 'alto', 'medio', 'bajo', 'fuera del estado', 'cuota', 'precio'];
+
+                    for (let r = realHeaderIdx + 1; r < scanRows; r++) {
+                        const cellVal = String(rows[r]?.[colIdx] || '').trim();
+                        if (cellVal === '' || cellVal === '-') continue;
+
+                        const nCell = normalizeText(cellVal);
+                        if (skipKeywords.some((kw) => nCell === normalizeText(kw))) continue;
+
+                        // Detectar si parece un precio
+                        const isPrice = /^\$?\d{1,3}(,\d{3})*(\.\d{2})?$/.test(cellVal) || /^\d+(\.\d+)?$/.test(cellVal);
+                        if (isPrice) {
+                            priceCount++;
+                        } else if (/[a-zA-Z├í├®├¡├│├║├ü├ë├ì├ô├Ü├▒├æ]{3,}/.test(cellVal)) {
+                            // Si contiene letras y es lo suficientemente largo, es un municipio
+                            nameCount++;
+                        }
+                    }
+
+                    // Es municipio si tiene NOMBRES y NO es una columna de PRECIOS
+                    if (nameCount > 0 && priceCount === 0) {
+                        validIndices.push(colIdx);
+                    }
+                });
+
+                finalMuniHeaders = validIndices.map((idx) => detRow[idx]);
+                finalMuniFields = validIndices.map((idx) => {
+                    const n = normalizeText(detRow[idx]);
+                    // Sincronizar con l├│gica de backend: cualquier variante de zona o fuera es un 'nombre'
+                    if (n.includes('muni') || n.includes('clase') || n.includes('zona') || n.includes('fuera') || n.includes('exterior') || n.includes('estado') || n.includes('chiapas')) return 'nombre';
+                    return '';
+                });
+
+                finalMuniRows = rows
+                    .slice(realHeaderIdx + 1)
+                    .map((row, idx) => ({
+                        rowNumber: idx + 1,
+                        fileRowNumber: realHeaderIdx + idx + 2,
+                        values: validIndices.map((cIdx) => String(row[cIdx] || '').trim())
+                    }))
+                    .filter((r) => {
+                        const hasVal = r.values.some((v) => {
+                            const tv = v.trim();
+                            if (tv === '' || tv === '-') return false;
+                            const isPrice = /^\$?\d{1,3}(,\d{3})*(\.\d{2})?$/.test(tv) || /^\d+(\.\d+)?$/.test(tv);
+                            return !isPrice;
+                        });
+                        const isMetaHeader = r.values.some((v) => {
+                            const nv = normalizeText(v);
+                            // Solo descartar si es EXACTAMENTE un encabezado de zona para no borrar municipios como "Chiapas"
+                            return ['zona1', 'zona2', 'zona3', 'zona 1', 'zona 2', 'zona 3', 'fueradelestado', 'fuera del estado'].includes(nv);
+                        });
+                        return hasVal && !isMetaHeader;
+                    });
+
+                setMuniHeaders(
+                    finalMuniHeaders.map((h) => {
+                        const nh = normalizeText(h);
+                        if (nh.includes('zona3') || nh.includes('muy alto')) return 'Zona 3';
+                        if (nh.includes('zona2') || nh.includes('alto')) return 'Zona 2';
+                        if (nh.includes('zona1') || nh.includes('medio') || nh.includes('bajo')) return 'Zona 1';
+                        if (nh.includes('fuera') || nh.includes('exterior') || nh.includes('chiapas') || nh.includes('estado')) return 'Fuera del estado';
+                        return h;
+                    })
+                );
+                setMuniFields(finalMuniFields);
+                setMuniRows(finalMuniRows);
+            }
+
+            // Procesar Vi├íticos
+            let finalViaticoHeaders: string[] = [];
+            let finalViaticoFields: string[] = [];
+            let finalViaticoRows: ImportPreviewRow[] = [];
+            if (viaticoMatches > 0) {
+                const detRow = rows[viaticoHeaderIdx];
+                const validIndices: number[] = [];
+                const viaticoSearchKeywords = [...nViaticoKeywords, 'zona', 'fuera', 'estado'];
+
+                detRow.forEach((h, colIdx) => {
+                    const val = String(h || '').trim();
+                    const nVal = normalizeText(val);
+                    if (val === '') return;
+
+                    if (viaticoSearchKeywords.some((kw) => nVal.includes(kw))) {
+                        if (nVal.includes('zona') || nVal.includes('fuera') || nVal.includes('cuota') || nVal.includes('internacional')) {
+                            let hasNumbers = false;
+                            for (let r = viaticoHeaderIdx + 1; r < Math.min(rows.length, viaticoHeaderIdx + 10); r++) {
+                                const cv = String(rows[r]?.[colIdx] || '').replace(/[$,%\s-]/g, '');
+                                if (cv !== '' && !isNaN(Number(cv))) {
+                                    hasNumbers = true;
+                                    break;
+                                }
+                            }
+                            if (hasNumbers) validIndices.push(colIdx);
+                        } else if (nVal.includes('categoria') || nVal.includes('nivel')) {
+                            validIndices.push(colIdx);
+                        }
+                    }
+                });
+
+                finalViaticoHeaders = validIndices.map((idx) => detRow[idx]);
+                finalViaticoFields = validIndices.map((idx) => {
+                    const n = normalizeText(detRow[idx]);
+                    if (n.includes('categoria')) return 'categoria';
+                    if (n.includes('nivel')) return 'nivel';
+                    if (n.includes('zona') && n.includes('1')) return 'zona1';
+                    if (n.includes('zona') && n.includes('2')) return 'zona2';
+                    if (n.includes('zona') && n.includes('3')) return 'zona3';
+                    if (n.includes('fuera')) return 'cuota_fuera_estado';
+                    if (n.includes('internacional')) return 'cuota_internacional';
+                    return '';
+                });
+
+                finalViaticoRows = rows
+                    .slice(viaticoHeaderIdx + 1)
+                    .map((row, idx) => ({
+                        rowNumber: idx + 1,
+                        fileRowNumber: viaticoHeaderIdx + idx + 2,
+                        values: validIndices.map((cIdx) => String(row[cIdx] || '').trim())
+                    }))
+                    .filter((r) => {
+                        const hasVal = r.values.some((v) => v !== '' && v !== '-');
+                        const isMainHeader = r.values.some((v) => normalizeText(v).includes('categoria') || normalizeText(v).includes('nivel'));
+                        return hasVal && !isMainHeader;
+                    });
+
+                setViaticoHeaders(finalViaticoHeaders);
+                setViaticoFields(finalViaticoFields);
+                setViaticoRows(finalViaticoRows);
+            }
+
+            // Procesar Gen├®rico (Fallback si no es especial o si es otro cat├ílogo)
+            if (activeTab === 'viaticos' && finalMuniHeaders.length === 0 && finalViaticoHeaders.length === 0) {
+                const firstDataIdx = rows.findIndex((r) => r.some((c) => c !== ''));
+                if (firstDataIdx !== -1) {
+                    const hRow = rows[firstDataIdx];
+                    const vIdxs = hRow.map((c, i) => (c !== '' ? i : -1)).filter((i) => i !== -1);
+                    const genHeaders = vIdxs.map((i) => hRow[i]);
+                    const genFields = vIdxs.map((i) => {
+                        const n = normalizeText(hRow[i]);
+                        if (n.includes('codigo')) return 'codigo';
+                        if (n.includes('nombre')) return 'nombre';
+                        if (n.includes('estatus') || n.includes('estado')) return 'estatus';
+                        if (n.includes('descripcion')) return 'descripcion';
+                        return '';
+                    });
+                    const genRows = rows.slice(firstDataIdx + 1).map((row, idx) => ({
+                        rowNumber: idx + 1,
+                        fileRowNumber: firstDataIdx + idx + 2,
+                        values: vIdxs.map((i) => String(row[i] || '').trim())
+                    }));
+
+                    setViaticoHeaders(genHeaders);
+                    setViaticoFields(genFields);
+                    setViaticoRows(genRows.filter((r) => r.values.some((v) => v !== '')));
+                }
+            }
+
+            // Determinar inicial
+            if (catalogKey === 'municipios' && muniMatches > 0) {
+                setActiveTab('municipios');
+            } else if (viaticoMatches > 0) {
+                setActiveTab('viaticos');
+            } else {
+                setActiveTab('viaticos');
+            }
+
+            // Validaci├│n Estricta de Seguridad (Evitar archivos cruzados)
+            const catProhibitedKeywords: Record<string, string[]> = {
+                objetivos: ['codigo', 'fecha de termino', 'margen'],
+                politicas: ['codigo', 'objetivo'],
+                programas: ['codigo', 'poblacion'],
+                unidades: ['objetivo', 'cuota', 'precio']
+            };
+
+            const prohibited = catProhibitedKeywords[catalogKey] || [];
+            const foundProhibited = prohibited.filter((kw) => {
+                const nKw = normalizeText(kw);
+                return rows.slice(0, 10).some((row) => row.some((cell) => normalizeText(String(cell || '')).includes(nKw)));
+            });
+
+            if (foundProhibited.length > 0 && catalogKey !== 'municipios') {
+                // Sugerir qu├® cat├ílogo podr├¡a ser
+                let suggestion = '';
+                if (foundProhibited.includes('codigo')) suggestion = 'Unidades Responsables o Precios';
+                setStructureError(`ÔÜá´©Å Este archivo no parece ser de "${catalogTitle}". Se detectaron columnas de "${suggestion || 'otro cat├ílogo'}". Por favor, verifica el archivo.`);
+            } else {
+                // Validaci├│n de campos requeridos (Sincronizado con Back)
+                const required = CATALOG_REQUIREMENTS[catalogKey] || [];
+                const missing = required.filter((req) => {
+                    const nReq = normalizeText(req);
+                    return !rows.slice(0, 10).some((row) =>
+                        row.some((cell) => {
+                            const cellVal = normalizeText(String(cell || ''));
+                            // Empat├¡a con variaciones comunes
+                            if (nReq === 'estatus' && cellVal === 'estado') return true;
+                            if (nReq === 'codigo' && cellVal === 'clave') return true;
+                            return cellVal === nReq;
+                        })
+                    );
+                });
+
+                if (missing.length > 0 && catalogKey !== 'municipios') {
+                    setStructureError(`ÔÜá´©Å Al archivo le faltan columnas obligatorias: [${missing.join(', ')}]. Por favor verifica el formato.`);
+                } else {
+                    setStructureError(null);
+                }
+            }
+        } catch (error) {
+            console.error('Error parsing file preview:', error);
+            throw error;
+        }
+    };
+
+    const normalizeImportResult = (payload: any): ImportResult => {
+        const extractRow = (message: string): number | undefined => {
+            const match = message.match(/(?:fila|row|linea|line)\s*[:#-]?\s*(\d+)/i);
+            if (!match) return undefined;
+            const r = Number(match[1]);
+            return Number.isFinite(r) ? r : undefined;
+        };
+        const totalCreated = Number(payload?.total_created ?? payload?.totalCreated ?? 0);
+        const totalUpdated = Number(payload?.total_updated ?? payload?.totalUpdated ?? 0);
+        const totalErrors = Number(payload?.total_errors ?? payload?.totalErrors ?? 0);
+        const rawErrors = payload?.data?.errors ?? payload?.errors;
+
+        let errors: ImportErrorItem[] = [];
+        if (Array.isArray(rawErrors)) {
+            errors = rawErrors.map((item: any) => {
+                if (typeof item === 'string') return { row: extractRow(item), message: item };
+                const message = item?.message ?? item?.error ?? JSON.stringify(item);
+                const r = item?.row ?? item?.fila ?? item?.line ?? item?.linea;
+                return {
+                    row: Number.isFinite(Number(r)) ? Number(r) : extractRow(String(message)),
+                    field: item?.field ?? item?.campo,
+                    message
+                };
+            });
+        }
+        return {
+            totalCreated: Number.isFinite(totalCreated) ? totalCreated : 0,
+            totalUpdated: Number.isFinite(totalUpdated) ? totalUpdated : 0,
+            totalErrors: Number.isFinite(totalErrors) ? totalErrors : errors.length,
+            errors,
+            details: payload?.data?.details ?? payload?.details
+        };
+    };
+
+    const executeImport = async () => {
+        if (!importFile) return showMsgError('Selecciona un archivo para importar');
+        const formData = new FormData();
+        formData.append('archivo', importFile);
+        formData.append('catalogo', catalogKey);
+        try {
+            setImporting(true);
+            const response = await http.post('/api/catalogos/importar', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            const result = normalizeImportResult(response?.data ?? response ?? {});
+            setImportResult(result);
+            if (onRefresh) await onRefresh();
+
+            if (result.totalErrors > 0) {
+                // Al importar, si hay errores:
+                // 1. Si NO es error de encabezado, filtramos para dejar solo lo que fall├│
+                // 2. Si ES error de encabezado, NO filtramos para que el usuario vea la estructura completa
+                const isHdrErr = result.errors.some((e) => {
+                    const m = String(e.message || '').toLowerCase();
+                    return m.includes('encabezad') || m.includes('header') || m.includes('estructura');
+                });
+
+                if (!isHdrErr) {
+                    const errorRowNumbers = new Set(result.errors.map((e) => Number(e.row)));
+                    setMuniRows((prev) => prev.filter((r) => errorRowNumbers.has(r.fileRowNumber)));
+                    setViaticoRows((prev) => prev.filter((r) => errorRowNumbers.has(r.fileRowNumber)));
+                }
+
+                showMsgError(`Importaci├│n con errores. ├ëxitos: ${result.totalCreated + result.totalUpdated}, Errores: ${result.totalErrors}`);
+            } else {
+                showMsgSuccess(`Importaci├│n exitosa. Se procesaron ${result.totalCreated + result.totalUpdated} registros.`);
+            }
+        } catch (error: any) {
+            const result = normalizeImportResult(error?.response?.data ?? {});
+            setImportResult(result);
+
+            const isHdrErr = result.errors.some((e) => {
+                const m = String(e.message || '').toLowerCase();
+                return m.includes('encabezad') || m.includes('header') || m.includes('estructura');
+            });
+
+            if (result.errors.length > 0 && !isHdrErr) {
+                const errorRowNumbers = new Set(result.errors.map((e) => Number(e.row)));
+                setMuniRows((prev) => prev.filter((r) => errorRowNumbers.has(r.fileRowNumber)));
+                setViaticoRows((prev) => prev.filter((r) => errorRowNumbers.has(r.fileRowNumber)));
+            }
+
+            showMsgError(formatApiError(error) || 'Error en la importaci├│n');
+        } finally {
+            setImporting(false);
+        }
+    };
+    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (!ext || !['csv', 'xls', 'xlsx'].includes(ext)) {
+            showMsgError('Formato no permitido. Use CSV, XLS o XLSX.');
+            return;
+        }
+        setImportResult(null);
+        setImportFile(file);
+        try {
+            await loadPreviewFromFile(file);
+        } catch (error) {
+            showMsgError('No se pudo generar la vista previa');
+        }
+    };
+
+    const isHeaderError = (importResult?.errors || []).some((e) => {
+        const m = String(e.message || '').toLowerCase();
+        return m.includes('encabezad') || m.includes('header') || m.includes('estructura');
+    });
+
+    // Usar fileRowNumber para mapear los errores del backend con las filas de la vista previa, filtrando por pesta├▒a activa
+    const mappedErrorRows = new Set(
+        (importResult?.errors || [])
+            .filter((e) => {
+                if (!e.row) return false;
+                const sheet = String(e.sheet || '').toLowerCase();
+                if (activeTab === 'viaticos') return sheet.includes('viatico') || !sheet;
+                if (activeTab === 'municipios') return sheet.includes('muni');
+                return true;
+            })
+            .map((e) => Number(e.row))
+    );
+
+    const hasPreviewErrors =
+        (activeTab === 'viaticos' && viaticoRows.some((r) => r.values.some((v) => v === '-' || v === ''))) ||
+        (activeTab === 'municipios' && muniRows.some((r) => r.values.some((v) => v === '-' || v === ''))) ||
+        (importResult && importResult.totalErrors > 0);
+
+    return (
+        <Dialog
+            visible={visible}
+            style={{ width: '900px' }}
+            header={catalogTitle}
+            modal
+            onHide={handleHide}
+            onShow={resetState}
+            footer={
+                <div className="flex justify-content-end gap-2">
+                    <Button label="Cerrar" icon="pi pi-times" severity="secondary" outlined onClick={handleHide} disabled={importing} />
+                    <Button label="Importar" icon="pi pi-check" onClick={executeImport} loading={importing} disabled={!!(!importFile || importing || structureError)} severity={structureError ? 'danger' : undefined} />
+                </div>
+            }
+        >
+            <div className="flex flex-column gap-3">
+                <p className="m-0 text-600">{description}</p>
+
+                <div className="flex gap-2 align-items-center">
+                    <input ref={fileInputRef} type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={handleFileChange} />
+                    <Button label={importFile ? 'Cambiar archivo' : 'Elegir archivo'} icon="pi pi-file" onClick={() => fileInputRef.current?.click()} disabled={importing} className="p-button-outlined" />
+                    <small className="text-700 font-medium">{importFile ? importFile.name : 'No hay archivo seleccionado'}</small>
+                </div>
+
+                {structureError && (
+                    <div className="bg-red-50 border-left-3 border-red-500 p-3 flex align-items-center gap-3 border-round">
+                        <i className="pi pi-exclamation-triangle text-red-600 text-xl"></i>
+                        <span className="text-red-800 font-medium">{structureError}</span>
+                    </div>
+                )}
+
+                {(muniRows.length > 0 || viaticoRows.length > 0) && (
+                    <div className="flex flex-column gap-2 mt-2">
+                        {/* Solo mostrar selector de pesta├▒as si hay datos en ambas o si es el cat├ílogo de municipios */}
+                        {muniRows.length > 0 && viaticoRows.length > 0 && (
+                            <div className="flex gap-1 bg-gray-100 p-1 border-round-lg w-fit">
+                                <button
+                                    onClick={() => setActiveTab('viaticos')}
+                                    className={`px-3 py-1 border-none border-round-md cursor-pointer font-medium transition-all text-sm ${activeTab === 'viaticos' ? 'bg-white text-blue-700 shadow-1' : 'bg-transparent text-600 hover:bg-gray-200'}`}
+                                >
+                                    {catalogKey === 'municipios' ? 'Vi├íticos' : catalogTitle}
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('municipios')}
+                                    className={`px-3 py-1 border-none border-round-md cursor-pointer font-medium transition-all text-sm ${activeTab === 'municipios' ? 'bg-white text-blue-700 shadow-1' : 'bg-transparent text-600 hover:bg-gray-200'}`}
+                                >
+                                    Municipios (Zonas)
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="border-1 surface-border border-round-xl p-0 overflow-hidden">
+                            <div className="flex align-items-center justify-content-between px-3 py-2 bg-blue-50 border-bottom-1 surface-border">
+                                <div className="flex align-items-center gap-2">
+                                    <i className="pi pi-table text-blue-600"></i>
+                                    <span className="font-semibold text-900">
+                                        {activeTab === 'viaticos' ? (catalogKey === 'municipios' ? 'Vi├íticos' : catalogTitle) : 'Municipios (Zonas)'} - {importFile?.name || 'Vista Previa'}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="overflow-auto border-bottom-1 surface-border" style={{ maxHeight: '350px' }}>
+                                <table className="w-full text-sm border-collapse">
+                                    <thead className="sticky top-0 z-1 shadow-1">
+                                        <tr className={isHeaderError ? 'bg-red-100 text-red-700' : 'bg-gray-50'}>
+                                            <th className={`text-left p-2 border-bottom-1 surface-border w-4rem ${isHeaderError ? 'text-red-700' : 'text-700'}`}>Fila</th>
+                                            {(activeTab === 'viaticos' ? viaticoHeaders : muniHeaders).map((h, i) => (
+                                                <th key={i} className={`text-left p-2 border-bottom-1 surface-border min-w-8rem ${isHeaderError ? 'text-red-700' : 'text-700'}`}>
+                                                    <div className="overflow-hidden text-overflow-ellipsis" title={h}>
+                                                        {h || `Col ${i + 1}`}
+                                                    </div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(activeTab === 'viaticos' ? viaticoRows : muniRows).slice(0, isHeaderError ? 2 : 50).map((row) => {
+                                            const hasError = Array.from(mappedErrorRows).includes(row.fileRowNumber);
+                                            const hds = activeTab === 'viaticos' ? viaticoHeaders : muniHeaders;
+                                            const fds = activeTab === 'viaticos' ? viaticoFields : muniFields;
+
+                                            return (
+                                                <tr key={row.rowNumber} className={hasError ? 'bg-red-50' : row.rowNumber % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                    <td className="p-2 border-bottom-1 surface-border">
+                                                        <span className={`px-2 py-1 border-round text-xs font-bold ${hasError ? 'bg-red-200 text-red-800' : 'bg-gray-200 text-700'}`}>{row.backendRowNumber ?? row.fileRowNumber}</span>
+                                                    </td>
+                                                    {hds.map((_, i) => {
+                                                        const fieldName = fds[i];
+                                                        const cellError = importResult?.errors.find((e) => {
+                                                            const sheet = String(e.sheet || '').toLowerCase();
+                                                            const isCorrectSheet = activeTab === 'viaticos' ? sheet.includes('viatico') || !sheet : sheet.includes('muni');
+                                                            return isCorrectSheet && Number(e.row) === row.fileRowNumber && String(e.field || '').toLowerCase() === fieldName;
+                                                        });
+
+                                                        return (
+                                                            <td key={i} className={`p-2 border-bottom-1 surface-border ${cellError ? 'bg-red-200 text-red-900 font-medium' : hasError ? 'text-red-700' : 'text-800'}`}>
+                                                                <div className="white-space-nowrap overflow-hidden text-overflow-ellipsis" title={cellError?.message || row.values[i]}>
+                                                                    {row.values[i] || '-'}
+                                                                </div>
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {importResult && (
+                    <div className="mt-3">
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            <Tag severity="success" value={`${importResult.details?.[activeTab]?.total_created ?? importResult.totalCreated} creados`} icon="pi pi-plus" />
+                            <Tag severity="info" value={`${importResult.details?.[activeTab]?.total_updated ?? importResult.totalUpdated} actualizados`} icon="pi pi-refresh" />
+                            <Tag
+                                severity={(importResult.details?.[activeTab]?.total_errors ?? importResult.totalErrors) > 0 ? 'danger' : undefined}
+                                value={`${importResult.details?.[activeTab]?.total_errors ?? importResult.totalErrors} errores`}
+                                icon="pi pi-exclamation-triangle"
+                            />
+                        </div>
+                        {importResult.errors.filter((e) => {
+                            const sheet = String(e.sheet || '').toLowerCase();
+                            if (activeTab === 'viaticos') return sheet.includes('viatico') || !sheet;
+                            if (activeTab === 'municipios') return sheet.includes('muni');
+                            return true;
+                        }).length > 0 && (
+                            <div className="max-h-12rem overflow-auto mt-2 border-1 surface-border border-round bg-gray-50 p-3">
+                                <div className="text-xs font-bold text-700 mb-2 border-bottom-1 surface-border pb-1">FILAS CON ERRORES:</div>
+                                {importResult.errors
+                                    .filter((e) => {
+                                        const sheet = String(e.sheet || '').toLowerCase();
+                                        if (activeTab === 'viaticos') return sheet.includes('viatico') || !sheet;
+                                        if (activeTab === 'municipios') return sheet.includes('muni');
+                                        return true;
+                                    })
+                                    .map((e, i) => (
+                                        <div key={i} className="text-xs mb-2 flex gap-2">
+                                            <span className="font-bold text-red-600">Fila {e.row || '?'}:</span>
+                                            <span className="text-600">{e.message}</span>
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </Dialog>
+    );
+};
+
+export default ImportCatalogDialog;
